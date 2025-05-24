@@ -106,14 +106,17 @@ runs:
           const code_smells = parseInt('${{ inputs.code_smells }}');
           const bugs = parseInt('${{ inputs.bugs }}');
           const vulnerabilities = parseInt('${{ inputs.vulnerabilities }}');
-          const total_vulnerabilities = high_severity + medium_severity + low_severity;
-
-          // Function to safely read JSON files
+          const total_vulnerabilities = high_severity + medium_severity + low_severity;          // Function to safely read JSON files
           function readJsonFile(filePath) {
             try {
               if (fs.existsSync(filePath)) {
+                console.log(`Reading file: ${filePath}`);
                 const content = fs.readFileSync(filePath, 'utf8');
-                return JSON.parse(content);
+                const parsed = JSON.parse(content);
+                console.log(`Successfully parsed JSON from ${filePath}, keys: ${Object.keys(parsed)}`);
+                return parsed;
+              } else {
+                console.log(`File not found: ${filePath}`);
               }
             } catch (error) {
               console.log(`Could not read ${filePath}: ${error.message}`);
@@ -121,12 +124,61 @@ runs:
             return null;
           }
 
-          // Function to format JSON for display
+          // List available files in analysis results directory
+          try {
+            if (fs.existsSync('./analysis-results/')) {
+              const files = fs.readdirSync('./analysis-results/');
+              console.log('Available analysis files:', files);
+            } else {
+              console.log('Analysis results directory not found');
+            }
+          } catch (error) {
+            console.log('Error listing analysis files:', error.message);
+          }// Function to format JSON for display
           function formatJsonForComment(obj, title) {
             if (!obj) return '';
             
+            // Truncate very large objects to prevent comment overflow
+            let displayObj = obj;
             const jsonString = JSON.stringify(obj, null, 2);
-            return `**${title}:**\n\`\`\`json\n${jsonString}\n\`\`\`\n`;
+            
+            // If JSON is too large (over 8000 chars), show a summary instead
+            if (jsonString.length > 8000) {
+              if (title.includes('Trivy') && obj.Results) {
+                // For Trivy, show summary of vulnerabilities
+                const vulnCount = obj.Results.reduce((total, result) => 
+                  total + (result.Vulnerabilities ? result.Vulnerabilities.length : 0), 0);
+                displayObj = {
+                  SchemaVersion: obj.SchemaVersion,
+                  ArtifactName: obj.ArtifactName,
+                  TotalVulnerabilities: vulnCount,
+                  Results: obj.Results.map(result => ({
+                    Target: result.Target,
+                    Class: result.Class,
+                    Type: result.Type,
+                    VulnerabilityCount: result.Vulnerabilities ? result.Vulnerabilities.length : 0,
+                    Vulnerabilities: result.Vulnerabilities ? result.Vulnerabilities.slice(0, 5).map(v => ({
+                      VulnerabilityID: v.VulnerabilityID,
+                      Severity: v.Severity,
+                      Title: v.Title,
+                      Description: v.Description ? v.Description.substring(0, 200) + '...' : ''
+                    })) : []
+                  }))
+                };
+              } else if (title.includes('SonarCloud')) {
+                // For SonarCloud, keep key measures
+                displayObj = obj;
+              } else {
+                // For other data, show first level only
+                displayObj = Object.keys(obj).reduce((acc, key) => {
+                  acc[key] = typeof obj[key] === 'object' ? '[Object]' : obj[key];
+                  return acc;
+                }, {});
+              }
+            }
+            
+            const finalJsonString = JSON.stringify(displayObj, null, 2);
+            return `\n**${title}:**\n\`\`\`json\n${finalJsonString}\n\`\`\`\n`;
           }
 
           // Read analysis artifacts
@@ -137,15 +189,13 @@ runs:
           // Extract meaningful data from artifacts
           let securityIssuesText = '';
           let qualityIssuesText = '';
-          let coverageDetailsText = '';
-
-          // Process Trivy security results
-          if (trivyData && trivyData.Results) {
+          let coverageDetailsText = '';          // Process Trivy security results
+          if (trivyData) {
             securityIssuesText = formatJsonForComment(trivyData, 'Security Scan Results (Trivy)');
           }
 
           // Process SonarCloud quality results  
-          if (sonarData && sonarData.measures) {
+          if (sonarData) {
             qualityIssuesText = formatJsonForComment(sonarData, 'Code Quality Analysis (SonarCloud)');
           }
 
@@ -200,9 +250,7 @@ runs:
             '- 📊 **[Full Analysis Logs](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')** - Complete CI results',
             '',
             '### 🔒 Security Analysis'
-          ];
-
-          // Show Trivy security scan results from JSON artifact
+          ];          // Show Trivy security scan results from JSON artifact
           if (securityIssuesText) {
             comment.push(securityIssuesText);
           } else {
@@ -212,12 +260,11 @@ runs:
             } else {
               comment.push('✅ **No security vulnerabilities detected!**');
             }
+            comment.push('*📝 Detailed security scan results were not available as JSON artifacts.*');
             comment.push('');
           }
 
-          comment.push('### 🧪 Test Coverage Analysis');
-
-          // Show coverage details from JSON artifact
+          comment.push('### 🧪 Test Coverage Analysis');          // Show coverage details from JSON artifact
           if (coverageDetailsText) {
             comment.push(coverageDetailsText);
           } else {
@@ -227,6 +274,7 @@ runs:
             } else {
               comment.push('⚠️ **No test files found** - Add automated testing to improve code reliability.');
             }
+            comment.push('*📝 Detailed coverage analysis results were not available as JSON artifacts.*');
             comment.push('');
           }
 
@@ -238,12 +286,12 @@ runs:
           } else {
             // Fallback to basic summary
             if (sonar_status !== 'UNKNOWN') {
-              const gateStatus = sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED';
-              comment.push('**Quality Gate:** ' + gateStatus);
+              const gateStatus = sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED';              comment.push('**Quality Gate:** ' + gateStatus);
               comment.push('**Issues Found:** ' + bugs + ' Bugs | ' + code_smells + ' Code Smells | ' + vulnerabilities + ' Vulnerabilities');
             } else {
               comment.push('⏳ **SonarCloud analysis pending or unavailable.**');
             }
+            comment.push('*📝 Detailed SonarCloud analysis results were not available as JSON artifacts.*');
             comment.push('');
           }
 
@@ -267,10 +315,22 @@ runs:
 
           if (overall_score >= 85) {
             comment.push('🏆 **Excellent work!** Your code meets high standards.');
-          }
-
-          comment.push('');
+          }          comment.push('');
           comment.push('---');
+          comment.push('');
+
+          // Add debug information about artifacts
+          const artifactStatus = [];
+          if (trivyData) artifactStatus.push('✅ Security (Trivy)');
+          else artifactStatus.push('❌ Security (Trivy)');
+
+          if (sonarData) artifactStatus.push('✅ Quality (SonarCloud)');
+          else artifactStatus.push('❌ Quality (SonarCloud)');
+
+          if (coverageData) artifactStatus.push('✅ Coverage');
+          else artifactStatus.push('❌ Coverage');
+
+          comment.push('**📦 Artifact Status:** ' + artifactStatus.join(' | '));
           comment.push('');
           comment.push('*🤖 Analysis completed on ' + new Date().toISOString().split('T')[0] + ' | PR #${{ inputs.pr_number }} | Powered by GitHub Actions*');
 

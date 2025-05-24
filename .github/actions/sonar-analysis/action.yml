@@ -123,11 +123,15 @@ runs:
           
           sonar_status=$(echo "$status_response" | jq -r '.projectStatus.status // "ERROR"')
           
-          # Fetch measures for scoring
-          measures_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
+          # Fetch measures for scoring          measures_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
             "https://sonarcloud.io/api/measures/component?component=${{ inputs.project_key }}&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc,complexity" || echo '{"component":{"measures":[]}}')
           
           echo "$measures_response" > sonar-measures.json
+          
+          # Ensure reports directory exists and copy results
+          mkdir -p reports
+          cp sonar-measures.json reports/
+          echo "📁 SonarCloud measures saved to reports/sonar-measures.json"
           
           # Calculate score based on measures
           if [ "$sonar_status" = "OK" ]; then

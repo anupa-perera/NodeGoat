@@ -63,11 +63,16 @@ runs:
               safety check --json > safety-report.json 2>/dev/null || true
             fi
             ;;
-        esac
-
-        # Run Trivy filesystem scan
+        esac        # Run Trivy filesystem scan
         echo "🔒 Running Trivy vulnerability scan..."
         trivy fs --format json --output trivy-results.json . 2>/dev/null || true
+        
+        # Ensure reports directory exists and copy results
+        mkdir -p reports
+        if [ -f "trivy-results.json" ]; then
+          cp trivy-results.json reports/
+          echo "📁 Trivy results saved to reports/trivy-results.json"
+        fi
 
         if [ -f "trivy-results.json" ]; then
           trivy_high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-results.json 2>/dev/null || echo "0")
