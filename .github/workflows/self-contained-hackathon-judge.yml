@@ -275,35 +275,59 @@ jobs:
         echo "missing_test_areas=$missing_test_areas" >> $GITHUB_OUTPUT
 
     # === SONARCLOUD ANALYSIS ===
-    - name: 🔍 SonarCloud Scan
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    - name: 💬 Detect Language and Framework
+      id: detect_language
       run: |
-        # Download and install SonarScanner
-        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
-        unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
-        
-        # Define the path to the SonarScanner distribution and its main JAR
-        SONAR_SCANNER_HOME="$PWD/sonar-scanner-4.8.0.2856-linux"
-        SONAR_SCANNER_CLI_JAR="$SONAR_SCANNER_HOME/lib/sonar-scanner-cli-4.8.0.2856.jar" # Adjust JAR version if needed
+        # Start creating sonar-project.properties
+        echo "sonar.sourceEncoding=UTF-8" > sonar-project.properties
+        echo "sonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }}" >> sonar-project.properties
+        # Automatically include your organization key
+        echo "sonar.organization=co-turing" >> sonar-project.properties
+        # Include general source and exclusion patterns
+        echo "sonar.sources=." >> sonar-project.properties
+        echo "sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**" >> sonar-project.properties
 
-        # Add SonarScanner bin to PATH for convenience, though we'll explicitly use JAVA_HOME below
-        export PATH="$SONAR_SCANNER_HOME/bin:$PATH"
-
-        echo "JAVA_HOME set to: $JAVA_HOME"
-        echo "Running Java version:"
-        "$JAVA_HOME"/bin/java -version
-
-        # Explicitly run the SonarScanner JAR with the Java from JAVA_HOME
-        if [ "${{ steps.pr_info.outputs.is_fork }}" = "true" ]; then
-          "$JAVA_HOME"/bin/java -jar "$SONAR_SCANNER_CLI_JAR" \
-            -Dsonar.pullrequest.key=${{ steps.pr_info.outputs.pr_number }} \
-            -Dsonar.pullrequest.branch=${{ steps.pr_info.outputs.head_ref }} \
-            -Dsonar.pullrequest.base=${{ steps.pr_info.outputs.base_ref }}
+        # --- EXISTING LOGIC FOR LANGUAGE AND FRAMEWORK DETECTION FOLLOWS ---
+        # This part ensures language-specific settings are also included.
+        # Ensure that this part adds to 'sonar-project.properties' using '>>'
+        # For example, if you detect JavaScript/TypeScript:
+        if [ -f "package.json" ]; then
+            echo "Detected Node.js project. Adding JavaScript/TypeScript properties."
+            echo "sonar.language=js" >> sonar-project.properties
+            echo "sonar.typescript.tsconfigPath=tsconfig.json" >> sonar-project.properties
+            echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+            echo "is_javascript=true" >> $GITHUB_OUTPUT
+            echo "has_frontend=true" >> $GITHUB_OUTPUT # Assuming package.json implies frontend
+        elif [ -f "requirements.txt" ]; then
+            echo "Detected Python project. Adding Python properties."
+            echo "sonar.language=py" >> sonar-project.properties
+            echo "sonar.python.coverage.reportPaths=coverage.xml" >> sonar-project.properties
+            echo "is_python=true" >> $GITHUB_OUTPUT
+        elif [ -f "go.mod" ]; then
+            echo "Detected Go project. Adding Go properties."
+            echo "sonar.language=go" >> sonar-project.properties
+            echo "is_go=true" >> $GITHUB_OUTPUT
+        elif find . -name "*.java" | grep -q .; then
+            echo "Detected Java project. Adding Java properties."
+            echo "sonar.language=java" >> sonar-project.properties
+            echo "is_java=true" >> $GITHUB_OUTPUT
+        elif find . -name "*.rs" | grep -q .; then
+            echo "Detected Rust project. Adding Rust properties."
+            echo "sonar.language=rust" >> sonar-project.properties
+            echo "is_rust=true" >> $GITHUB_OUTPUT
         else
-          "$JAVA_HOME"/bin/java -jar "$SONAR_SCANNER_CLI_JAR"
+            echo "Detected generic project. Setting language to text for basic analysis."
+            echo "sonar.language=text" >> sonar-project.properties
+            echo "is_generic=true" >> $GITHUB_OUTPUT
         fi
+
+        # Check for frontend indicators (e.g., specific directories, build tools)
+        if [ -d "public" ] || [ -d "client" ] || [ -d "dist" ] || [ -f "webpack.config.js" ] || [ -f "vite.config.js" ]; then
+            echo "has_frontend=true" >> $GITHUB_OUTPUT
+        fi
+
+        # Pass Sonar project key to subsequent steps
+        echo "sonar_project_key=${{ steps.pr_info.outputs.sonar_project_key }}" >> $GITHUB_OUTPUT
 
     # === WAIT AND FETCH SONARCLOUD RESULTS ===
     - name: ⏳ Fetch SonarCloud Results
