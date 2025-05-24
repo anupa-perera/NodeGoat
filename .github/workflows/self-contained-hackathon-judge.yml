@@ -53,7 +53,9 @@ jobs:
         with:
           ref: ${{ steps.pr_info.outputs.head_sha }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }} # === SONARCLOUD SETUP ===
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # === SONARCLOUD SETUP ===
       - name: ☕ Setup Java for SonarCloud
         uses: actions/setup-java@v4
         with:
