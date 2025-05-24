@@ -19,7 +19,6 @@ jobs:
   hackathon-analysis:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    # Enable manual approval for fork PRs while allowing SonarCloud access
     environment: ${{ github.event.pull_request.head.repo.full_name != github.repository && 'hackathon-approval' || '' }}
 
     steps:
@@ -54,14 +53,19 @@ jobs:
         with:
           ref: ${{ steps.pr_info.outputs.head_sha }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # === SONARCLOUD SETUP ===
+          token: ${{ secrets.GITHUB_TOKEN }} # === SONARCLOUD SETUP ===
       - name: ☕ Setup Java for SonarCloud
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: 17
+
+      - name: 🚀 Setup Node.js for JavaScript Analysis
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Cache SonarCloud packages
         uses: actions/cache@v3
@@ -116,8 +120,7 @@ jobs:
           else
             echo "language=generic" >> $GITHUB_OUTPUT
             # Check for HTML files
-            html_files=$(find . -name "*.html" | head -5 | wc -l)
-            if [ $html_files -gt 0 ]; then
+            html_files=$(find . -name "*.html" | head -5 | wc -l)            if [ $html_files -gt 0 ]; then
               echo "has_frontend=true" >> $GITHUB_OUTPUT
               echo "framework=html" >> $GITHUB_OUTPUT
             else
@@ -126,21 +129,27 @@ jobs:
             fi
           fi
 
-      - name: Setup Environment
+      - name: Setup Environment & Install Dependencies
         run: |
-          # Setup based on detected language
+          # Install dependencies based on detected language
           case "${{ steps.detect.outputs.language }}" in
             "javascript")
-              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-              sudo apt-get install -y nodejs
-              npm --version
+              echo "Installing Node.js dependencies..."
+              if [ -f "package.json" ]; then
+                npm install --production=false || npm install || true
+                echo "Node.js version: $(node --version)"
+                echo "NPM version: $(npm --version)"
+              fi
               ;;
             "python")
+              echo "Setting up Python environment..."
               sudo apt-get update
               sudo apt-get install -y python3 python3-pip python3-venv
               python3 --version
+              pip3 --version
               ;;
             "go")
+              echo "Setting up Go environment..."
               wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
               sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
               echo "/usr/local/go/bin" >> $GITHUB_PATH
@@ -291,9 +300,7 @@ jobs:
 
           # Ensure Java 17 is used by the scanner
           export JAVA_HOME=$JAVA_HOME_17_X64
-          export PATH=$JAVA_HOME/bin:$PATH
-
-          # Verify Java version
+          export PATH=$JAVA_HOME/bin:$PATH          # Verify Java version
           java -version
 
           echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH
@@ -312,16 +319,24 @@ jobs:
 
           # Verify Java version being used
           java -version
-          echo "JAVA_HOME: $JAVA_HOME"          # Verify SonarCloud token is available
+          echo "JAVA_HOME: $JAVA_HOME"
+
+          # Verify Node.js is available for JavaScript analysis
+          echo "Verifying Node.js availability..."          if command -v node >/dev/null 2>&1; then
+            echo "✅ Node.js version: $(node --version)"
+            echo "✅ NPM version: $(npm --version)"
+          else
+            echo "⚠️  Node.js not found in PATH, but continuing..."
+          fi
+
           if [ -z "$SONAR_TOKEN" ]; then
             echo "❌ SONAR_TOKEN secret is not configured!"
             echo "Please add your SonarCloud token to repository secrets."
             exit 1
-          fi          # Set organization name (convert to lowercase with hyphens)
-          SONAR_ORG="${{ vars.SONAR_ORGANIZATION }}"
-          if [ -z "$SONAR_ORG" ]; then
-            SONAR_ORG=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
           fi
+
+          # Set organization name (convert to lowercase with hyphens)
+          SONAR_ORG="${{ vars.SONAR_ORGANIZATION }}"
 
           echo "Using SonarCloud organization: $SONAR_ORG"
           echo "Project key: ${{ steps.pr_info.outputs.sonar_project_key }}"
