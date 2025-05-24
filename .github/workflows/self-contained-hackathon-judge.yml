@@ -248,17 +248,13 @@ jobs:
           echo "coverage_percentage=${coverage_percentage%.*}" >> $GITHUB_OUTPUT
           echo "test_files=$test_files" >> $GITHUB_OUTPUT
           echo "has_tests=$has_tests" >> $GITHUB_OUTPUT
-          echo "missing_test_areas=$missing_test_areas" >> $GITHUB_OUTPUT      # === GENERATE SONARCLOUD CONFIGURATION ===
+          echo "missing_test_areas=$missing_test_areas" >> $GITHUB_OUTPUT
+
+      # === GENERATE SONARCLOUD CONFIGURATION ===
       - name: 🔧 Generate SonarCloud Configuration
         run: |
           echo "Creating sonar-project.properties file..."
-
-          # Convert repository owner to lowercase with hyphens for SonarCloud organization
           SONAR_ORG="${{ vars.SONAR_ORGANIZATION }}"
-          if [ -z "$SONAR_ORG" ]; then
-            SONAR_ORG=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
-          fi
-
           cat > sonar-project.properties << EOF
           sonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }}
           sonar.organization=$SONAR_ORG
