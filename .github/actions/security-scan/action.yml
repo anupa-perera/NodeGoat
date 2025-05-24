@@ -19,6 +19,12 @@ outputs:
   low_severity:
     description: "Number of low severity issues"
     value: ${{ steps.security-scan.outputs.low_severity }}
+  security_issues:
+    description: "Detailed security issues found (JSON)"
+    value: ${{ steps.security-scan.outputs.security_issues }}
+  vulnerability_summary:
+    description: "Summary of top vulnerabilities"
+    value: ${{ steps.security-scan.outputs.vulnerability_summary }}
 
 runs:
   using: "composite"
@@ -80,11 +86,44 @@ runs:
 
         if [ $security_score -lt 0 ]; then
           security_score=0
-        fi
-
-        echo "security_score=$security_score" >> $GITHUB_OUTPUT
+        fi        echo "security_score=$security_score" >> $GITHUB_OUTPUT
         echo "high_severity=$high_severity" >> $GITHUB_OUTPUT
         echo "medium_severity=$medium_severity" >> $GITHUB_OUTPUT
         echo "low_severity=$low_severity" >> $GITHUB_OUTPUT
+
+        # Collect detailed vulnerability information
+        security_issues_summary=""
+        vulnerability_details="[]"
+
+        # Process npm audit results
+        if [ -f "npm-audit.json" ]; then
+          npm_issues=$(jq -r '.vulnerabilities | to_entries | map(select(.value.severity == "high" or .value.severity == "critical")) | .[0:3] | map("- **" + .key + "** (" + .value.severity + "): " + .value.title) | join("\n")' npm-audit.json 2>/dev/null || echo "")
+          if [ ! -z "$npm_issues" ]; then
+            security_issues_summary="${security_issues_summary}**NPM Dependencies:**\n${npm_issues}\n\n"
+          fi
+        fi
+
+        # Process Trivy results
+        if [ -f "trivy-results.json" ]; then
+          trivy_issues=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | .[0:3] | map("- **" + .VulnerabilityID + "** (" + .Severity + "): " + .Title) | join("\n")' trivy-results.json 2>/dev/null || echo "")
+          if [ ! -z "$trivy_issues" ]; then
+            security_issues_summary="${security_issues_summary}**Container/OS Vulnerabilities:**\n${trivy_issues}\n\n"
+          fi
+        fi
+
+        # Create vulnerability summary
+        if [ -z "$security_issues_summary" ]; then
+          if [ $((high_severity + medium_severity + low_severity)) -gt 0 ]; then
+            security_issues_summary="Security scan detected $((high_severity + medium_severity + low_severity)) issues. Run detailed security analysis for specifics."
+          else
+            security_issues_summary="No major security vulnerabilities detected."
+          fi
+        fi
+
+        # Escape for GitHub output
+        security_issues_summary=$(echo "$security_issues_summary" | tr '\n' '|')
+
+        echo "vulnerability_summary=$security_issues_summary" >> $GITHUB_OUTPUT
+        echo "security_issues=$vulnerability_details" >> $GITHUB_OUTPUT
 
         echo "✅ Security scan complete - Score: $security_score/100 | Issues: H:$high_severity M:$medium_severity L:$low_severity"

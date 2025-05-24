@@ -28,6 +28,18 @@ outputs:
   sonar_url:
     description: "SonarCloud project URL"
     value: ${{ steps.sonar-results.outputs.sonar_url }}
+  code_smells:
+    description: "Number of code smells"
+    value: ${{ steps.sonar-results.outputs.code_smells }}
+  bugs:
+    description: "Number of bugs"
+    value: ${{ steps.sonar-results.outputs.bugs }}
+  vulnerabilities:
+    description: "Number of security vulnerabilities"
+    value: ${{ steps.sonar-results.outputs.vulnerabilities }}
+  quality_issues:
+    description: "Summary of quality issues"
+    value: ${{ steps.sonar-results.outputs.quality_issues }}
 
 runs:
   using: composite
