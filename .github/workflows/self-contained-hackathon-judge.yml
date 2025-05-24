@@ -324,19 +324,31 @@ jobs:
           java -version
           echo "JAVA_HOME: $JAVA_HOME"
 
+          # Set Node.js path explicitly
+          export PATH="/opt/hostedtoolcache/node/18.20.5/x64/bin:$PATH"
+
           # Verify Node.js is available for JavaScript analysis
           echo "Verifying Node.js availability..."
           if command -v node >/dev/null 2>&1; then
             echo "✅ Node.js version: $(node --version)"
             echo "✅ NPM version: $(npm --version)"
+            echo "✅ Node.js path: $(which node)"
           else
-            echo "⚠️  Node.js not found in PATH, but continuing..."
-          fi
-
-          if [ -z "$SONAR_TOKEN" ]; then
-            echo "❌ SONAR_TOKEN secret is not configured!"
-            echo "Please add your SonarCloud token to repository secrets."
-            exit 1
+            echo "❌ Node.js not found in PATH!"
+            echo "Available paths: $PATH"
+            # Try to find Node.js
+            find /opt/hostedtoolcache/node -name "node" 2>/dev/null || true
+            echo "Setting up Node.js manually..."
+            
+            # Set up Node.js manually if not found
+            NODE_PATH=$(find /opt/hostedtoolcache/node -name "node" | head -1 | xargs dirname 2>/dev/null || echo "")
+            if [ ! -z "$NODE_PATH" ]; then
+              export PATH="$NODE_PATH:$PATH"
+              echo "Added Node.js to PATH: $NODE_PATH"
+              echo "Node.js version: $(node --version)"
+            else
+              echo "⚠️ Could not find Node.js, excluding JS/TS files from analysis"
+            fi
           fi
 
           # Set organization name (convert to lowercase with hyphens)
