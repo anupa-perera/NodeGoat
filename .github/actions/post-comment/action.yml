@@ -63,6 +63,10 @@ inputs:
     description: "Summary of security vulnerabilities"
     required: false
     default: ""
+  security_issues:
+    description: "Detailed security issues found"
+    required: false
+    default: ""
   coverage_details:
     description: "Detailed coverage analysis"
     required: false
@@ -81,6 +85,10 @@ inputs:
     default: "0"
   bugs:
     description: "Number of bugs"
+    required: false
+    default: "0"
+  vulnerabilities:
+    description: "Number of vulnerabilities from SonarCloud"
     required: false
     default: "0"
 
@@ -108,12 +116,14 @@ runs:
           const sonar_status = '${{ inputs.sonar_status }}';
           const code_smells = parseInt('${{ inputs.code_smells }}');
           const bugs = parseInt('${{ inputs.bugs }}');
+          const vulnerabilities = parseInt('${{ inputs.vulnerabilities }}');
 
           // Parse detailed descriptions (replacing | with newlines for multi-line content)
-          const vulnerability_summary = '${{ inputs.vulnerability_summary }}'.replace(/\|/g, '\n');
-          const coverage_details = '${{ inputs.coverage_details }}'.replace(/\|/g, '\n');
-          const missing_tests = '${{ inputs.missing_tests }}'.replace(/\|/g, '\n');
-          const quality_issues = '${{ inputs.quality_issues }}'.replace(/\|/g, '\n');
+          const vulnerability_summary = ('${{ inputs.vulnerability_summary }}' || '').replace(/\|/g, '\n');
+          const security_issues = ('${{ inputs.security_issues }}' || '').replace(/\|/g, '\n');
+          const coverage_details = ('${{ inputs.coverage_details }}' || '').replace(/\|/g, '\n');
+          const missing_tests = ('${{ inputs.missing_tests }}' || '').replace(/\|/g, '\n');
+          const quality_issues = ('${{ inputs.quality_issues }}' || '').replace(/\|/g, '\n');
 
           // Total vulnerabilities
           const total_vulnerabilities = high_severity + medium_severity + low_severity;
@@ -141,154 +151,173 @@ runs:
             return '❌';
           }
 
-          const comment = `
-          ## 🏆 Hackathon Analysis Results
+          const comment = [
+            '## 🏆 Hackathon Analysis Results',
+            '',
+            '**Team:** ${{ inputs.team_name }}',
+            '**Technology Stack:** ${{ inputs.detected_stack }}',
+            '**Overall Score:** ' + getGradeEmoji(overall_score) + ' **' + overall_score + '/100**',
+            '',
+            '### 📊 Detailed Breakdown',
+            '',
+            '| Category | Score | Progress | Weight |',
+            '|----------|-------|----------|---------|',
+            '| ' + getStatusEmoji(test_score) + ' **Tests & Coverage** | ' + test_score + '/100 | `' + createProgressBar(test_score) + '` | 25% |',
+            '| ' + getStatusEmoji(sonar_score) + ' **Code Quality** | ' + sonar_score + '/100 | `' + createProgressBar(sonar_score) + '` | 30% |',
+            '| ' + getStatusEmoji(security_score) + ' **Security** | ' + security_score + '/100 | `' + createProgressBar(security_score) + '` | 20% |',
+            '| ' + getStatusEmoji(frontend_score) + ' **Frontend UX** | ' + frontend_score + '/100 | `' + createProgressBar(frontend_score) + '` | 10% |',
+            '| ' + getStatusEmoji(team_score) + ' **Team Collaboration** | ' + team_score + '/100 | `' + createProgressBar(team_score) + '` | 10% |',
+            '| ' + getStatusEmoji(ai_score) + ' **AI Attribution** | ' + ai_score + '/100 | `' + createProgressBar(ai_score) + '` | 5% |',
+            '',
+            '### 🔍 Analysis Links',
+            '- 🔗 **[SonarCloud Report](${{ inputs.sonar_url }})** - Detailed code quality analysis',
+            '- 📊 **[Full Analysis Logs](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')** - Complete CI results',
+            '',
+            '### 🔒 Security Issues Found'
+          ];
 
-          **Team:** ${{ inputs.team_name }}  
-          **Technology Stack:** ${{ inputs.detected_stack }}  
-          **Overall Score:** ${getGradeEmoji(overall_score)} **${overall_score}/100**
-
-          ### 📊 Detailed Breakdown
-
-          | Category | Score | Progress | Weight |
-          |----------|-------|----------|---------|
-          | ${getStatusEmoji(test_score)} **Tests & Coverage** | ${test_score}/100 | \`${createProgressBar(test_score)}\` | 25% |
-          | ${getStatusEmoji(sonar_score)} **Code Quality** | ${sonar_score}/100 | \`${createProgressBar(sonar_score)}\` | 30% |
-          | ${getStatusEmoji(security_score)} **Security** | ${security_score}/100 | \`${createProgressBar(security_score)}\` | 20% |
-          | ${getStatusEmoji(frontend_score)} **Frontend UX** | ${frontend_score}/100 | \`${createProgressBar(frontend_score)}\` | 10% |
-          | ${getStatusEmoji(team_score)} **Team Collaboration** | ${team_score}/100 | \`${createProgressBar(team_score)}\` | 10% |
-          | ${getStatusEmoji(ai_score)} **AI Attribution** | ${ai_score}/100 | \`${createProgressBar(ai_score)}\` | 5% |
-
-          ### 🔍 Analysis Links
-          - 🔗 **[SonarCloud Report](${{ inputs.sonar_url }})** - Detailed code quality analysis
-          - 📊 **[Full Analysis Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})** - Complete CI results
-
-          ### 🔒 Security Issues Found
-          ${total_vulnerabilities > 0 ? `
-          **Summary:** ${high_severity} High | ${medium_severity} Medium | ${low_severity} Low severity issues
-
-          ${vulnerability_summary ? `
-          **Details:**
-          ${vulnerability_summary}
-          ` : 'Run detailed security scan for specific vulnerability information.'}
-          ` : '✅ No security vulnerabilities detected!'}
-
-          ### 🧪 Test Coverage Analysis
-          ${test_files > 0 ? `
-          **Coverage:** ${coverage_percentage.toFixed(1)}% | **Test Files:** ${test_files}
-
-          ${coverage_details ? `
-          **Coverage Details:**
-          ${coverage_details}
-          ` : ''}
-
-          ${missing_tests ? `
-          **Areas Needing Tests:**
-          ${missing_tests}
-          ` : ''}
-          ` : '⚠️ No test files found - Add automated testing to improve code reliability.'}
-
-          ### 🔧 Code Quality Issues
-          ${sonar_status !== 'UNKNOWN' ? `
-          **Quality Gate:** ${sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED'}
-          **Issues Found:** ${bugs} Bugs | ${code_smells} Code Smells
-
-          ${quality_issues ? `
-          **Quality Issues:**
-          ${quality_issues}
-          ` : ''}
-          ` : 'SonarCloud analysis pending or unavailable.'}
-
-          ### 💡 Top 5 Recommendations
-
-          ${(() => {
-            const recommendations = [];
-            
-            // Specific recommendations based on detailed analysis data
-            
-            // Security-specific recommendations with details
-            if (high_severity > 0) {
-              recommendations.push(\`🚨 **Critical: Fix \${high_severity} high-severity vulnerabilities** - These pose immediate security risks and should be addressed first\`);
-            } else if (medium_severity > 0) {
-              recommendations.push(\`⚠️ **Address \${medium_severity} medium-severity vulnerabilities** - Update dependencies and patch security issues\`);
-            } else if (total_vulnerabilities > 0) {
-              recommendations.push(\`🔒 **Resolve \${total_vulnerabilities} security issues** - Clean up low-severity vulnerabilities for better security posture\`);
-            } else if (security_score < 70) {
-              recommendations.push('🔒 **Strengthen security measures** - Implement input validation, secure headers, and dependency scanning');
+          if (total_vulnerabilities > 0) {
+            comment.push('**Summary:** ' + high_severity + ' High | ' + medium_severity + ' Medium | ' + low_severity + ' Low severity issues');
+            comment.push('');
+            if (vulnerability_summary) {
+              comment.push('**Details:**');
+              comment.push(vulnerability_summary);
+              comment.push('');
             }
-            
-            // Test coverage specific recommendations with context
-            if (coverage_percentage < 50) {
-              recommendations.push(\`🧪 **Urgent: Increase test coverage from \${coverage_percentage.toFixed(1)}%** - Add unit tests for core functionality and critical paths\`);
-            } else if (coverage_percentage < 80) {
-              recommendations.push(\`🧪 **Improve test coverage to 80%+ (currently \${coverage_percentage.toFixed(1)}%)** - Focus on edge cases and error handling\`);
-            } else if (test_files === 0) {
-              recommendations.push('🧪 **Add automated testing** - Create test files for validation and regression prevention');
+            if (security_issues) {
+              comment.push('**Security Issues:**');
+              comment.push(security_issues);
+              comment.push('');
             }
-            
-            // SonarCloud specific recommendations with details
-            if (sonar_status === 'FAILED') {
-              recommendations.push(\`🔧 **Fix SonarCloud quality gate failures** - Address \${bugs} bugs and \${code_smells} code smells immediately\`);
-            } else if (bugs > 0) {
-              recommendations.push(\`🐛 **Fix \${bugs} bugs detected by SonarCloud** - Resolve code reliability issues\`);
-            } else if (code_smells > 5) {
-              recommendations.push(\`🧹 **Clean up \${code_smells} code smells** - Improve maintainability and readability\`);
-            } else if (sonar_score < 70) {
-              recommendations.push('🔧 **Improve code quality metrics** - Reduce complexity, fix code smells, and improve maintainability');
-            }
-            
-            // Performance recommendations for high-performing teams
-            if (overall_score >= 85) {
-              recommendations.push('🚀 **Excellence achieved! Consider advanced optimizations** - Implement caching, performance monitoring, and scalability patterns');
-            } else if (overall_score >= 75 && test_score >= 80 && security_score >= 80) {
-              recommendations.push('📚 **Add comprehensive testing** - Implement integration tests, performance tests, and end-to-end test suites');
-            }
-            
-            // Frontend and team collaboration
-            if (frontend_score < 60 && frontend_score > 0) {
-              recommendations.push('🎨 **Enhance user experience** - Improve accessibility, performance, and responsive design');
-            }
-            if (team_score < 70) {
-              recommendations.push('👥 **Improve collaboration practices** - Use descriptive commits, balanced contributions, and code reviews');
-            }
-            if (ai_score < 80) {
-              recommendations.push('🤖 **Document AI assistance** - Add proper attribution for AI-generated code and maintain transparency');
-            }
-            
-            // Fill remaining slots with targeted general recommendations
-            if (recommendations.length < 5) {
-              const targetedRecs = [];
-              
-              // Add specific recommendations based on what's missing
-              if (coverage_percentage > 80 && security_score > 80) {
-                targetedRecs.push('📊 **Add monitoring and logging** - Implement application performance monitoring and error tracking');
-              }
-              if (test_score > 70 && sonar_score > 70) {
-                targetedRecs.push('🔄 **Automate deployment** - Set up CI/CD pipelines with automated testing and deployment');
-              }
-              targetedRecs.push('📖 **Enhance documentation** - Add comprehensive API docs, setup guides, and architecture documentation');
-              targetedRecs.push('⚡ **Optimize performance** - Profile bottlenecks and implement caching strategies');
-              targetedRecs.push('🌍 **Consider scalability** - Implement load balancing, database optimization, and microservices patterns');
-              
-              for (const rec of targetedRecs) {
-                if (recommendations.length >= 5) break;
-                recommendations.push(rec);
-              }
-            }
-            
-            return recommendations.slice(0, 5).map((rec, index) => \`\${index + 1}. \${rec}\`).join('\\n          ');
-          })()}
+          } else {
+            comment.push('✅ No security vulnerabilities detected!');
+            comment.push('');
+          }
 
-          ---
+          comment.push('### 🧪 Test Coverage Analysis');
+          if (test_files > 0) {
+            comment.push('**Coverage:** ' + coverage_percentage.toFixed(1) + '% | **Test Files:** ' + test_files);
+            comment.push('');
+            if (coverage_details) {
+              comment.push('**Coverage Details:**');
+              comment.push(coverage_details);
+              comment.push('');
+            }
+            if (missing_tests) {
+              comment.push('**Areas Needing Tests:**');
+              comment.push(missing_tests);
+              comment.push('');
+            }
+          } else {
+            comment.push('⚠️ No test files found - Add automated testing to improve code reliability.');
+            comment.push('');
+          }
 
-          *🤖 Analysis completed on ${new Date().toISOString().split('T')[0]} | 
-          PR #${{ inputs.pr_number }} | 
-          Powered by GitHub Actions*
-          `;
+          comment.push('### 🔧 Code Quality Issues');
+          if (sonar_status !== 'UNKNOWN') {
+            const gateStatus = sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED';
+            comment.push('**Quality Gate:** ' + gateStatus);
+            comment.push('**Issues Found:** ' + bugs + ' Bugs | ' + code_smells + ' Code Smells | ' + vulnerabilities + ' Vulnerabilities');
+            comment.push('');
+            if (quality_issues) {
+              comment.push('**Quality Issues:**');
+              comment.push(quality_issues);
+              comment.push('');
+            }
+          } else {
+            comment.push('SonarCloud analysis pending or unavailable.');
+            comment.push('');
+          }
+
+          comment.push('### 💡 Top 5 Recommendations');
+          comment.push('');
+
+          const recommendations = [];
+
+          // Security-specific recommendations with details
+          if (high_severity > 0) {
+            recommendations.push('🚨 **Critical: Fix ' + high_severity + ' high-severity vulnerabilities** - These pose immediate security risks and should be addressed first');
+          } else if (medium_severity > 0) {
+            recommendations.push('⚠️ **Address ' + medium_severity + ' medium-severity vulnerabilities** - Update dependencies and patch security issues');
+          } else if (total_vulnerabilities > 0) {
+            recommendations.push('🔒 **Resolve ' + total_vulnerabilities + ' security issues** - Clean up low-severity vulnerabilities for better security posture');
+          } else if (security_score < 70) {
+            recommendations.push('🔒 **Strengthen security measures** - Implement input validation, secure headers, and dependency scanning');
+          }
+
+          // Test coverage specific recommendations with context
+          if (coverage_percentage < 50) {
+            recommendations.push('🧪 **Urgent: Increase test coverage from ' + coverage_percentage.toFixed(1) + '%** - Add unit tests for core functionality and critical paths');
+          } else if (coverage_percentage < 80) {
+            recommendations.push('🧪 **Improve test coverage to 80%+ (currently ' + coverage_percentage.toFixed(1) + '%)** - Focus on edge cases and error handling');
+          } else if (test_files === 0) {
+            recommendations.push('🧪 **Add automated testing** - Create test files for validation and regression prevention');
+          }
+
+          // SonarCloud specific recommendations with details
+          if (sonar_status === 'FAILED') {
+            recommendations.push('🔧 **Fix SonarCloud quality gate failures** - Address ' + bugs + ' bugs and ' + code_smells + ' code smells immediately');
+          } else if (bugs > 0) {
+            recommendations.push('🐛 **Fix ' + bugs + ' bugs detected by SonarCloud** - Resolve code reliability issues');
+          } else if (code_smells > 5) {
+            recommendations.push('🧹 **Clean up ' + code_smells + ' code smells** - Improve maintainability and readability');
+          } else if (sonar_score < 70) {
+            recommendations.push('🔧 **Improve code quality metrics** - Reduce complexity, fix code smells, and improve maintainability');
+          }
+
+          // Performance recommendations for high-performing teams
+          if (overall_score >= 85) {
+            recommendations.push('🚀 **Excellence achieved! Consider advanced optimizations** - Implement caching, performance monitoring, and scalability patterns');
+          } else if (overall_score >= 75 && test_score >= 80 && security_score >= 80) {
+            recommendations.push('📚 **Add comprehensive testing** - Implement integration tests, performance tests, and end-to-end test suites');
+          }
+
+          // Frontend and team collaboration
+          if (frontend_score < 60 && frontend_score > 0) {
+            recommendations.push('🎨 **Enhance user experience** - Improve accessibility, performance, and responsive design');
+          }
+          if (team_score < 70) {
+            recommendations.push('👥 **Improve collaboration practices** - Use descriptive commits, balanced contributions, and code reviews');
+          }
+          if (ai_score < 80) {
+            recommendations.push('🤖 **Document AI assistance** - Add proper attribution for AI-generated code and maintain transparency');
+          }
+
+          // Fill remaining slots with targeted general recommendations
+          if (recommendations.length < 5) {
+            const targetedRecs = [];
+            
+            // Add specific recommendations based on what's missing
+            if (coverage_percentage > 80 && security_score > 80) {
+              targetedRecs.push('📊 **Add monitoring and logging** - Implement application performance monitoring and error tracking');
+            }
+            if (test_score > 70 && sonar_score > 70) {
+              targetedRecs.push('🔄 **Automate deployment** - Set up CI/CD pipelines with automated testing and deployment');
+            }
+            targetedRecs.push('📖 **Enhance documentation** - Add comprehensive API docs, setup guides, and architecture documentation');
+            targetedRecs.push('⚡ **Optimize performance** - Profile bottlenecks and implement caching strategies');
+            targetedRecs.push('🌍 **Consider scalability** - Implement load balancing, database optimization, and microservices patterns');
+            
+            for (const rec of targetedRecs) {
+              if (recommendations.length >= 5) break;
+              recommendations.push(rec);
+            }
+          }
+
+          for (let i = 0; i < Math.min(5, recommendations.length); i++) {
+            comment.push((i + 1) + '. ' + recommendations[i]);
+          }
+
+          comment.push('');
+          comment.push('---');
+          comment.push('');
+          comment.push('*🤖 Analysis completed on ' + new Date().toISOString().split('T')[0] + ' | PR #${{ inputs.pr_number }} | Powered by GitHub Actions*');
+
+          const finalComment = comment.join('\n');
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: comment
+            body: finalComment
           });
