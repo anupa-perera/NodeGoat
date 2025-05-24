@@ -274,10 +274,10 @@ jobs:
             "go")
               echo "sonar.go.coverage.reportPaths=coverage.out" >> sonar-project.properties
               ;;
-          esac
+          esac          echo "SonarCloud configuration:"
+          cat sonar-project.properties
 
-          echo "SonarCloud configuration:"
-          cat sonar-project.properties      # === DOWNLOAD SONARCLOUD SCANNER ===
+      # === DOWNLOAD SONARCLOUD SCANNER ===
       - name: 📥 Download SonarCloud Scanner
         run: |
           echo "Downloading SonarCloud Scanner..."
@@ -293,7 +293,9 @@ jobs:
           # Verify Java version
           java -version
 
-          echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH# === RUN SONARCLOUD ANALYSIS ===
+          echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH
+
+      # === RUN SONARCLOUD ANALYSIS ===
       - name: 🔍 Run SonarCloud Analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -314,10 +316,8 @@ jobs:
             echo "❌ SONAR_TOKEN secret is not configured!"
             echo "Please add your SonarCloud token to repository secrets."
             exit 1
-          fi
-
-          # Run SonarCloud scan with explicit Java home
-          SONAR_SCANNER_OPTS="-Djava.home=$JAVA_HOME" sonar-scanner \
+          fi          # Run SonarCloud scan with explicit Java home and full path
+          SONAR_SCANNER_OPTS="-Djava.home=$JAVA_HOME" ./sonar-scanner/bin/sonar-scanner \
             -Dsonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }} \
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || github.repository_owner }} \
             -Dsonar.host.url=https://sonarcloud.io \
