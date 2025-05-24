@@ -274,7 +274,9 @@ jobs:
             "go")
               echo "sonar.go.coverage.reportPaths=coverage.out" >> sonar-project.properties
               ;;
-          esac          echo "SonarCloud configuration:"
+          esac
+
+          echo "SonarCloud configuration:"
           cat sonar-project.properties
 
       # === DOWNLOAD SONARCLOUD SCANNER ===
@@ -309,14 +311,14 @@ jobs:
 
           # Verify Java version being used
           java -version
-          echo "JAVA_HOME: $JAVA_HOME"
-
-          # Verify SonarCloud token is available
+          echo "JAVA_HOME: $JAVA_HOME"          # Verify SonarCloud token is available
           if [ -z "$SONAR_TOKEN" ]; then
             echo "❌ SONAR_TOKEN secret is not configured!"
             echo "Please add your SonarCloud token to repository secrets."
             exit 1
-          fi          # Run SonarCloud scan with explicit Java home and full path
+          fi
+
+          # Run SonarCloud scan with explicit Java home and full path
           SONAR_SCANNER_OPTS="-Djava.home=$JAVA_HOME" ./sonar-scanner/bin/sonar-scanner \
             -Dsonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }} \
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || github.repository_owner }} \
