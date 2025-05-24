@@ -122,7 +122,8 @@ jobs:
           else
             echo "language=generic" >> $GITHUB_OUTPUT
             # Check for HTML files
-            html_files=$(find . -name "*.html" | head -5 | wc -l)            if [ $html_files -gt 0 ]; then
+            html_files=$(find . -name "*.html" | head -5 | wc -l)
+            if [ $html_files -gt 0 ]; then
               echo "has_frontend=true" >> $GITHUB_OUTPUT
               echo "framework=html" >> $GITHUB_OUTPUT
             else
