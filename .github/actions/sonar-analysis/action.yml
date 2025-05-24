@@ -1,0 +1,126 @@
+name: "SonarCloud Analysis"
+description: "Run SonarCloud code quality analysis"
+
+inputs:
+  project_key:
+    description: "SonarCloud project key"
+    required: true
+  organization:
+    description: "SonarCloud organization"
+    required: true
+  language:
+    description: "Programming language"
+    required: true
+  sonar_token:
+    description: "SonarCloud token"
+    required: true
+  github_token:
+    description: "GitHub token"
+    required: true
+
+outputs:
+  sonar_score:
+    description: "SonarCloud quality score"
+    value: ${{ steps.sonar-results.outputs.sonar_score }}
+  sonar_status:
+    description: "Quality gate status"
+    value: ${{ steps.sonar-results.outputs.sonar_status }}
+  sonar_url:
+    description: "SonarCloud project URL"
+    value: ${{ steps.sonar-results.outputs.sonar_url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: 🔧 Generate SonarCloud Configuration
+      shell: bash
+      run: |
+        cat > sonar-project.properties << EOF
+        sonar.projectKey=${{ inputs.project_key }}
+        sonar.organization=${{ inputs.organization }}
+        sonar.sources=.
+        sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/*.min.js,**/vendor/**,**/.git/**,**/.github/**,**/test/**,**/tests/**,**/__tests__/**
+        EOF
+
+        # Language-specific properties
+        case "${{ inputs.language }}" in
+          "javascript")
+            echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+            ;;
+          "python")
+            echo "sonar.python.coverage.reportPaths=coverage.xml" >> sonar-project.properties
+            ;;
+        esac
+
+        echo "✅ SonarCloud configuration created"
+
+    - name: 📥 Setup SonarCloud Scanner
+      shell: bash
+      run: |
+        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+        unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
+        mv sonar-scanner-5.0.1.3006-linux sonar-scanner
+        echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH
+        echo "✅ SonarCloud scanner ready"
+
+    - name: 🔍 Run SonarCloud Analysis
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+      run: |
+        # Set Java path explicitly
+        export JAVA_HOME=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.15-6/x64
+        export PATH=$JAVA_HOME/bin:$PATH
+
+        # Verify environment
+        java -version
+        echo "✅ Running SonarCloud analysis..."
+
+        ./sonar-scanner/bin/sonar-scanner \
+          -Dsonar.projectKey=${{ inputs.project_key }} \
+          -Dsonar.organization=${{ inputs.organization }} \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.token=${{ inputs.sonar_token }}
+
+    - name: ⏳ Fetch SonarCloud Results
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+      run: |
+        echo "⏳ Waiting for SonarCloud analysis to complete..."
+        sleep 30
+
+        sonar_score=50
+        sonar_status="ERROR"
+        sonar_url="https://sonarcloud.io/project/overview?id=${{ inputs.project_key }}"
+
+        # Try to fetch results from SonarCloud API
+        if [ -n "${{ inputs.sonar_token }}" ]; then
+          # Fetch quality gate status
+          status_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
+            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${{ inputs.project_key }}" || echo '{"projectStatus":{"status":"ERROR"}}')
+          
+          sonar_status=$(echo "$status_response" | jq -r '.projectStatus.status // "ERROR"')
+          
+          # Fetch measures for scoring
+          measures_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
+            "https://sonarcloud.io/api/measures/component?component=${{ inputs.project_key }}&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc,complexity" || echo '{"component":{"measures":[]}}')
+          
+          echo "$measures_response" > sonar-measures.json
+          
+          # Calculate score based on measures
+          if [ "$sonar_status" = "OK" ]; then
+            sonar_score=85
+          elif [ "$sonar_status" = "WARN" ]; then
+            sonar_score=70
+          else
+            sonar_score=50
+          fi
+        fi
+
+        echo "sonar_score=$sonar_score" >> $GITHUB_OUTPUT
+        echo "sonar_status=$sonar_status" >> $GITHUB_OUTPUT
+        echo "sonar_url=$sonar_url" >> $GITHUB_OUTPUT
+
+        echo "✅ SonarCloud analysis complete - Score: $sonar_score/100 | Status: $sonar_status"

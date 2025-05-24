@@ -1,0 +1,105 @@
+name: "Test Coverage Analysis"
+description: "Run tests and calculate coverage metrics"
+
+inputs:
+  language:
+    description: "Programming language"
+    required: true
+
+outputs:
+  test_score:
+    description: "Test score out of 100"
+    value: ${{ steps.test-coverage.outputs.test_score }}
+  coverage_percentage:
+    description: "Code coverage percentage"
+    value: ${{ steps.test-coverage.outputs.coverage_percentage }}
+  test_files:
+    description: "Number of test files found"
+    value: ${{ steps.test-coverage.outputs.test_files }}
+  has_tests:
+    description: "Whether tests were found"
+    value: ${{ steps.test-coverage.outputs.has_tests }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: 🧪 Run Tests with Coverage
+      shell: bash
+      run: |
+        coverage_percentage=0
+        test_files=0
+        has_tests=false
+        missing_test_areas=""
+
+        case "${{ inputs.language }}" in
+          "javascript")
+            if [ -f "package.json" ]; then
+              npm install 2>/dev/null || true
+              
+              # Check for test scripts
+              if npm run test --dry-run 2>/dev/null; then
+                has_tests=true
+                echo "🧪 Running JavaScript tests..."
+                npm test 2>/dev/null || npm run test:coverage 2>/dev/null || true
+                
+                # Extract coverage from common locations
+                if [ -f "coverage/lcov-report/index.html" ]; then
+                  coverage_percentage=$(grep -o '[0-9]*\.[0-9]*%' coverage/lcov-report/index.html | head -1 | tr -d '%' || echo "0")
+                fi
+              fi
+              
+              test_files=$(find . -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" | wc -l)
+              
+              if [ $test_files -eq 0 ]; then
+                missing_test_areas="No test files found. Consider adding tests for main functionality."
+              fi
+            fi
+            ;;
+          "python")
+            pip3 install pytest pytest-cov coverage 2>/dev/null || true
+            
+            python_test_files=$(find . -name "test_*.py" -o -name "*_test.py" | wc -l)
+            if [ $python_test_files -gt 0 ]; then
+              has_tests=true
+              echo "🧪 Running Python tests..."
+              pytest --cov=. --cov-report=term-missing 2>/dev/null || python -m pytest --cov=. 2>/dev/null || true
+              coverage_percentage=$(coverage report 2>/dev/null | grep TOTAL | awk '{print $4}' | tr -d '%' || echo "0")
+            fi
+            test_files=$python_test_files
+            ;;
+          "go")
+            if find . -name "*_test.go" | head -1 | grep -q .; then
+              has_tests=true
+              echo "🧪 Running Go tests..."
+              go test -coverprofile=coverage.out ./... 2>/dev/null || true
+              if [ -f "coverage.out" ]; then
+                coverage_percentage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%' || echo "0")
+              fi
+            fi
+            test_files=$(find . -name "*_test.go" | wc -l)
+            ;;
+        esac
+
+        # Calculate test score
+        test_score=0
+        if [ "$has_tests" = "true" ]; then
+          test_score=${coverage_percentage%.*}
+          # Bonus for having multiple test files
+          if [ $test_files -gt 5 ]; then
+            test_score=$((test_score + 10))
+          elif [ $test_files -gt 0 ]; then
+            test_score=$((test_score + 5))
+          fi
+        fi
+
+        # Cap at 100
+        if [ $test_score -gt 100 ]; then
+          test_score=100
+        fi
+
+        echo "test_score=$test_score" >> $GITHUB_OUTPUT
+        echo "coverage_percentage=${coverage_percentage%.*}" >> $GITHUB_OUTPUT
+        echo "test_files=$test_files" >> $GITHUB_OUTPUT
+        echo "has_tests=$has_tests" >> $GITHUB_OUTPUT
+
+        echo "✅ Tests: $has_tests | Files: $test_files | Coverage: ${coverage_percentage%.*}% | Score: $test_score/100"

@@ -1,0 +1,121 @@
+name: "Post Results Comment"
+description: "Post formatted results comment on PR"
+
+inputs:
+  overall_score:
+    description: "Overall score"
+    required: true
+  test_score:
+    description: "Test score"
+    required: true
+  sonar_score:
+    description: "SonarCloud score"
+    required: true
+  sonar_url:
+    description: "SonarCloud URL"
+    required: true
+  security_score:
+    description: "Security score"
+    required: true
+  frontend_score:
+    description: "Frontend score"
+    required: true
+  team_score:
+    description: "Team score"
+    required: true
+  ai_score:
+    description: "AI score"
+    required: true
+  detected_stack:
+    description: "Detected technology stack"
+    required: true
+  pr_number:
+    description: "PR number"
+    required: true
+  team_name:
+    description: "Team name"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: 💬 Post Analysis Results
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const overall_score = parseInt('${{ inputs.overall_score }}');
+          const test_score = parseInt('${{ inputs.test_score }}');
+          const sonar_score = parseInt('${{ inputs.sonar_score }}');
+          const security_score = parseInt('${{ inputs.security_score }}');
+          const frontend_score = parseInt('${{ inputs.frontend_score }}');
+          const team_score = parseInt('${{ inputs.team_score }}');
+          const ai_score = parseInt('${{ inputs.ai_score }}');
+
+          // Helper function to create progress bar
+          function createProgressBar(score) {
+            const filledBlocks = Math.floor(score / 10);
+            const emptyBlocks = 10 - filledBlocks;
+            return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+          }
+
+          // Helper function to get grade emoji
+          function getGradeEmoji(score) {
+            if (score >= 90) return '🏆';
+            if (score >= 80) return '🥇';
+            if (score >= 70) return '🥈';
+            if (score >= 60) return '🥉';
+            return '🔧';
+          }
+
+          // Helper function to get status emoji
+          function getStatusEmoji(score) {
+            if (score >= 80) return '✅';
+            if (score >= 60) return '⚠️';
+            return '❌';
+          }
+
+          const comment = `
+          ## 🏆 Hackathon Analysis Results
+
+          **Team:** ${{ inputs.team_name }}  
+          **Technology Stack:** ${{ inputs.detected_stack }}  
+          **Overall Score:** ${getGradeEmoji(overall_score)} **${overall_score}/100**
+
+          ### 📊 Detailed Breakdown
+
+          | Category | Score | Progress | Weight |
+          |----------|-------|----------|---------|
+          | ${getStatusEmoji(test_score)} **Tests & Coverage** | ${test_score}/100 | \`${createProgressBar(test_score)}\` | 25% |
+          | ${getStatusEmoji(sonar_score)} **Code Quality** | ${sonar_score}/100 | \`${createProgressBar(sonar_score)}\` | 30% |
+          | ${getStatusEmoji(security_score)} **Security** | ${security_score}/100 | \`${createProgressBar(security_score)}\` | 20% |
+          | ${getStatusEmoji(frontend_score)} **Frontend UX** | ${frontend_score}/100 | \`${createProgressBar(frontend_score)}\` | 10% |
+          | ${getStatusEmoji(team_score)} **Team Collaboration** | ${team_score}/100 | \`${createProgressBar(team_score)}\` | 10% |
+          | ${getStatusEmoji(ai_score)} **AI Attribution** | ${ai_score}/100 | \`${createProgressBar(ai_score)}\` | 5% |
+
+          ### 🔍 Analysis Links
+
+          - 🔗 **[SonarCloud Report](${{ inputs.sonar_url }})** - Detailed code quality analysis
+          - 📊 **[Full Analysis Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})** - Complete CI results
+
+          ### 💡 Key Recommendations
+
+          ${test_score < 70 ? '🧪 **Tests:** Add more comprehensive test coverage for better reliability' : ''}
+          ${sonar_score < 70 ? '🔧 **Code Quality:** Address code smells and maintainability issues identified by SonarCloud' : ''}
+          ${security_score < 70 ? '🔒 **Security:** Review and fix security vulnerabilities in dependencies' : ''}
+          ${frontend_score < 70 && frontend_score > 0 ? '🎨 **Frontend:** Improve accessibility, performance, and SEO scores' : ''}
+          ${team_score < 70 ? '👥 **Collaboration:** Improve commit messages and encourage more team member participation' : ''}
+          ${ai_score < 90 ? '🤖 **AI Attribution:** Consider adding documentation about AI tool usage in development' : ''}
+
+          ---
+
+          *🤖 Analysis completed on ${new Date().toISOString().split('T')[0]} | 
+          PR #${{ inputs.pr_number }} | 
+          Powered by GitHub Actions*
+          `;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

@@ -1,0 +1,78 @@
+name: "AI Usage Detection"
+description: "Detect and analyze AI-generated code patterns"
+
+outputs:
+  ai_score:
+    description: "AI attribution score out of 100"
+    value: ${{ steps.ai-analysis.outputs.ai_score }}
+  ai_percentage:
+    description: "Estimated percentage of AI-generated content"
+    value: ${{ steps.ai-analysis.outputs.ai_percentage }}
+  has_attribution:
+    description: "Whether AI usage is properly attributed"
+    value: ${{ steps.ai-analysis.outputs.has_attribution }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: 🤖 AI Usage Analysis
+      shell: bash
+      run: |
+        ai_score=100
+        ai_percentage=0
+        has_attribution=false
+
+        echo "🤖 Analyzing code for AI patterns..."
+
+        # Look for AI attribution in common places
+        attribution_files=0
+        if grep -r -i "ai\|gpt\|copilot\|claude\|chatgpt" README.md CONTRIBUTING.md docs/ 2>/dev/null | head -1 | grep -q .; then
+          has_attribution=true
+          attribution_files=$((attribution_files + 1))
+        fi
+
+        # Check commit messages for AI mentions
+        ai_commits=$(git log --oneline | grep -i "ai\|gpt\|copilot\|claude\|chatgpt" | wc -l 2>/dev/null || echo "0")
+        if [ $ai_commits -gt 0 ]; then
+          has_attribution=true
+        fi
+
+        # Look for AI-generated code patterns (basic heuristics)
+        total_files=$(find . -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.go" -o -name "*.java" | grep -v node_modules | wc -l)
+
+        if [ $total_files -gt 0 ]; then
+          # Count files with AI-like patterns
+          ai_patterns=0
+          
+          # Very long functions (often AI-generated)
+          long_functions=$(grep -r "function\|def\|func" . --include="*.js" --include="*.ts" --include="*.py" --include="*.go" 2>/dev/null | wc -l || echo "0")
+          
+          # Perfect formatting/comments (AI tends to be very consistent)
+          perfect_comments=$(grep -r "//\|#\|/\*" . --include="*.js" --include="*.ts" --include="*.py" --include="*.go" 2>/dev/null | wc -l || echo "0")
+          
+          # Estimate AI percentage based on patterns
+          if [ $total_files -gt 0 ]; then
+            ai_percentage=$((perfect_comments * 100 / total_files / 10))
+            if [ $ai_percentage -gt 100 ]; then
+              ai_percentage=100
+            fi
+          fi
+        fi
+
+        # Calculate AI score
+        if [ "$has_attribution" = "true" ]; then
+          ai_score=100  # Full points for proper attribution
+        else
+          # Deduct points based on estimated AI usage without attribution
+          deduction=$((ai_percentage / 2))
+          ai_score=$((100 - deduction))
+          if [ $ai_score -lt 0 ]; then
+            ai_score=0
+          fi
+        fi
+
+        echo "ai_score=$ai_score" >> $GITHUB_OUTPUT
+        echo "ai_percentage=$ai_percentage" >> $GITHUB_OUTPUT
+        echo "has_attribution=$has_attribution" >> $GITHUB_OUTPUT
+
+        echo "✅ AI analysis complete - Score: $ai_score/100 | Estimated AI: $ai_percentage% | Attribution: $has_attribution"

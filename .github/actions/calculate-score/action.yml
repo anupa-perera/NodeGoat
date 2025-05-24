@@ -1,0 +1,105 @@
+name: "Calculate Final Score"
+description: "Calculate weighted final score from all analysis components"
+
+inputs:
+  test_score:
+    description: "Test coverage score"
+    required: true
+  sonar_score:
+    description: "SonarCloud quality score"
+    required: true
+  security_score:
+    description: "Security analysis score"
+    required: true
+  frontend_score:
+    description: "Frontend usability score"
+    required: true
+  team_score:
+    description: "Team behavior score"
+    required: true
+  ai_score:
+    description: "AI attribution score"
+    required: true
+
+outputs:
+  overall_score:
+    description: "Final weighted score out of 100"
+    value: ${{ steps.calculate.outputs.overall_score }}
+  grade:
+    description: "Letter grade (A-F)"
+    value: ${{ steps.calculate.outputs.grade }}
+  breakdown:
+    description: "JSON object with score breakdown"
+    value: ${{ steps.calculate.outputs.breakdown }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: 📊 Calculate Weighted Score
+      shell: bash
+      run: |
+        # Define weights (must sum to 100)
+        TEST_WEIGHT=25
+        SONAR_WEIGHT=30
+        SECURITY_WEIGHT=20
+        FRONTEND_WEIGHT=10
+        TEAM_WEIGHT=10
+        AI_WEIGHT=5
+
+        # Get input scores
+        test_score=${{ inputs.test_score }}
+        sonar_score=${{ inputs.sonar_score }}
+        security_score=${{ inputs.security_score }}
+        frontend_score=${{ inputs.frontend_score }}
+        team_score=${{ inputs.team_score }}
+        ai_score=${{ inputs.ai_score }}
+
+        # Calculate weighted score
+        overall_score=$(echo "scale=0; ($test_score * $TEST_WEIGHT + $sonar_score * $SONAR_WEIGHT + $security_score * $SECURITY_WEIGHT + $frontend_score * $FRONTEND_WEIGHT + $team_score * $TEAM_WEIGHT + $ai_score * $AI_WEIGHT) / 100" | bc 2>/dev/null || echo "0")
+
+        # Determine letter grade
+        if [ $overall_score -ge 90 ]; then
+          grade="A"
+        elif [ $overall_score -ge 80 ]; then
+          grade="B"
+        elif [ $overall_score -ge 70 ]; then
+          grade="C"
+        elif [ $overall_score -ge 60 ]; then
+          grade="D"
+        else
+          grade="F"
+        fi
+
+        # Create breakdown JSON
+        breakdown=$(cat << EOF
+        {
+          "overall_score": $overall_score,
+          "grade": "$grade",
+          "components": {
+            "test_coverage": {"score": $test_score, "weight": $TEST_WEIGHT},
+            "code_quality": {"score": $sonar_score, "weight": $SONAR_WEIGHT},
+            "security": {"score": $security_score, "weight": $SECURITY_WEIGHT},
+            "frontend": {"score": $frontend_score, "weight": $FRONTEND_WEIGHT},
+            "team_behavior": {"score": $team_score, "weight": $TEAM_WEIGHT},
+            "ai_attribution": {"score": $ai_score, "weight": $AI_WEIGHT}
+          }
+        }
+        EOF
+        )
+
+        # Save breakdown to file
+        mkdir -p reports
+        echo "$breakdown" > reports/score-breakdown.json
+
+        echo "overall_score=$overall_score" >> $GITHUB_OUTPUT
+        echo "grade=$grade" >> $GITHUB_OUTPUT
+        echo "breakdown=$breakdown" >> $GITHUB_OUTPUT
+
+        echo "✅ Final score calculated: $overall_score/100 (Grade: $grade)"
+        echo "📊 Component breakdown:"
+        echo "  - Tests & Coverage: $test_score/100 (${TEST_WEIGHT}%)"
+        echo "  - Code Quality: $sonar_score/100 (${SONAR_WEIGHT}%)"
+        echo "  - Security: $security_score/100 (${SECURITY_WEIGHT}%)"
+        echo "  - Frontend UX: $frontend_score/100 (${FRONTEND_WEIGHT}%)"
+        echo "  - Team Behavior: $team_score/100 (${TEAM_WEIGHT}%)"
+        echo "  - AI Attribution: $ai_score/100 (${AI_WEIGHT}%)"
