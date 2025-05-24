@@ -59,26 +59,6 @@ inputs:
     description: "SonarCloud quality gate status"
     required: false
     default: "UNKNOWN"
-  vulnerability_summary:
-    description: "Summary of security vulnerabilities"
-    required: false
-    default: ""
-  security_issues:
-    description: "Detailed security issues found"
-    required: false
-    default: ""
-  coverage_details:
-    description: "Detailed coverage analysis"
-    required: false
-    default: ""
-  missing_tests:
-    description: "Areas missing test coverage"
-    required: false
-    default: ""
-  quality_issues:
-    description: "Summary of code quality issues"
-    required: false
-    default: ""
   code_smells:
     description: "Number of code smells"
     required: false
@@ -95,10 +75,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: 📥 Download Analysis Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: hackathon-analysis-${{ inputs.team_name }}-pr${{ inputs.pr_number }}
+        path: ./analysis-results/
+
     - name: 💬 Post Analysis Results
       uses: actions/github-script@v7
       with:
         script: |
+          const fs = require('fs');
+          const path = require('path');
+
           const overall_score = parseInt('${{ inputs.overall_score }}');
           const test_score = parseInt('${{ inputs.test_score }}');
           const sonar_score = parseInt('${{ inputs.sonar_score }}');
@@ -107,7 +96,7 @@ runs:
           const team_score = parseInt('${{ inputs.team_score }}');
           const ai_score = parseInt('${{ inputs.ai_score }}');
 
-          // Parse detailed analysis data
+          // Parse basic analysis data
           const high_severity = parseInt('${{ inputs.high_severity }}');
           const medium_severity = parseInt('${{ inputs.medium_severity }}');
           const low_severity = parseInt('${{ inputs.low_severity }}');
@@ -117,16 +106,53 @@ runs:
           const code_smells = parseInt('${{ inputs.code_smells }}');
           const bugs = parseInt('${{ inputs.bugs }}');
           const vulnerabilities = parseInt('${{ inputs.vulnerabilities }}');
-
-          // Parse detailed descriptions (replacing | with newlines for multi-line content)
-          const vulnerability_summary = ('${{ inputs.vulnerability_summary }}' || '').replace(/\|/g, '\n');
-          const security_issues = ('${{ inputs.security_issues }}' || '').replace(/\|/g, '\n');
-          const coverage_details = ('${{ inputs.coverage_details }}' || '').replace(/\|/g, '\n');
-          const missing_tests = ('${{ inputs.missing_tests }}' || '').replace(/\|/g, '\n');
-          const quality_issues = ('${{ inputs.quality_issues }}' || '').replace(/\|/g, '\n');
-
-          // Total vulnerabilities
           const total_vulnerabilities = high_severity + medium_severity + low_severity;
+
+          // Function to safely read JSON files
+          function readJsonFile(filePath) {
+            try {
+              if (fs.existsSync(filePath)) {
+                const content = fs.readFileSync(filePath, 'utf8');
+                return JSON.parse(content);
+              }
+            } catch (error) {
+              console.log(`Could not read ${filePath}: ${error.message}`);
+            }
+            return null;
+          }
+
+          // Function to format JSON for display
+          function formatJsonForComment(obj, title) {
+            if (!obj) return '';
+            
+            const jsonString = JSON.stringify(obj, null, 2);
+            return `**${title}:**\n\`\`\`json\n${jsonString}\n\`\`\`\n`;
+          }
+
+          // Read analysis artifacts
+          const sonarData = readJsonFile('./analysis-results/sonar-measures.json');
+          const trivyData = readJsonFile('./analysis-results/trivy-results.json');
+          const coverageData = readJsonFile('./analysis-results/coverage-summary.json');
+
+          // Extract meaningful data from artifacts
+          let securityIssuesText = '';
+          let qualityIssuesText = '';
+          let coverageDetailsText = '';
+
+          // Process Trivy security results
+          if (trivyData && trivyData.Results) {
+            securityIssuesText = formatJsonForComment(trivyData, 'Security Scan Results (Trivy)');
+          }
+
+          // Process SonarCloud quality results  
+          if (sonarData && sonarData.measures) {
+            qualityIssuesText = formatJsonForComment(sonarData, 'Code Quality Analysis (SonarCloud)');
+          }
+
+          // Process coverage results
+          if (coverageData) {
+            coverageDetailsText = formatJsonForComment(coverageData, 'Test Coverage Details');
+          }
 
           // Helper function to create progress bar
           function createProgressBar(score) {
@@ -174,20 +200,13 @@ runs:
             '- 📊 **[Full Analysis Logs](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')** - Complete CI results',
             '',
             '### 🔒 Security Analysis'
-          ];          // Show vulnerability summary directly if available
-          if (vulnerability_summary && vulnerability_summary.trim() !== '') {
-            comment.push(vulnerability_summary);
-            comment.push('');
-          }
+          ];
 
-          // Show detailed security issues directly if available
-          if (security_issues && security_issues.trim() !== '') {
-            comment.push(security_issues);
-            comment.push('');
-          }
-
-          // Fallback summary if no detailed outputs available
-          if (!vulnerability_summary && !security_issues) {
+          // Show Trivy security scan results from JSON artifact
+          if (securityIssuesText) {
+            comment.push(securityIssuesText);
+          } else {
+            // Fallback to basic summary
             if (total_vulnerabilities > 0) {
               comment.push('**Summary:** ' + high_severity + ' High | ' + medium_severity + ' Medium | ' + low_severity + ' Low severity issues');
             } else {
@@ -196,20 +215,13 @@ runs:
             comment.push('');
           }
 
-          comment.push('### 🧪 Test Coverage Analysis');          // Show coverage details directly if available
-          if (coverage_details && coverage_details.trim() !== '') {
-            comment.push(coverage_details);
-            comment.push('');
-          }
+          comment.push('### 🧪 Test Coverage Analysis');
 
-          // Show missing test areas directly if available
-          if (missing_tests && missing_tests.trim() !== '') {
-            comment.push(missing_tests);
-            comment.push('');
-          }
-
-          // Fallback summary if no detailed outputs available
-          if (!coverage_details && !missing_tests) {
+          // Show coverage details from JSON artifact
+          if (coverageDetailsText) {
+            comment.push(coverageDetailsText);
+          } else {
+            // Fallback to basic summary
             if (test_files > 0) {
               comment.push('**Coverage:** ' + coverage_percentage.toFixed(1) + '% | **Test Files:** ' + test_files);
             } else {
@@ -218,14 +230,13 @@ runs:
             comment.push('');
           }
 
-          comment.push('### 🔧 Code Quality Analysis');          // Show quality issues directly if available
-          if (quality_issues && quality_issues.trim() !== '') {
-            comment.push(quality_issues);
-            comment.push('');
-          }
+          comment.push('### 🔧 Code Quality Analysis');
 
-          // Fallback summary if no detailed outputs available
-          if (!quality_issues) {
+          // Show SonarCloud analysis from JSON artifact
+          if (qualityIssuesText) {
+            comment.push(qualityIssuesText);
+          } else {
+            // Fallback to basic summary
             if (sonar_status !== 'UNKNOWN') {
               const gateStatus = sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED';
               comment.push('**Quality Gate:** ' + gateStatus);

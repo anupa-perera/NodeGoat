@@ -142,11 +142,6 @@ jobs:
           coverage_percentage: ${{ steps.test_analysis.outputs.coverage_percentage || '0' }}
           test_files: ${{ steps.test_analysis.outputs.test_files || '0' }}
           sonar_status: ${{ steps.sonar_analysis.outputs.sonar_status || 'UNKNOWN' }}
-          vulnerability_summary: ${{ steps.security_analysis.outputs.vulnerability_summary || '' }}
-          security_issues: ${{ steps.security_analysis.outputs.security_issues || '' }}
-          coverage_details: ${{ steps.test_analysis.outputs.coverage_details || '' }}
-          missing_tests: ${{ steps.test_analysis.outputs.missing_tests || '' }}
-          quality_issues: ${{ steps.sonar_analysis.outputs.quality_issues || '' }}
           code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
