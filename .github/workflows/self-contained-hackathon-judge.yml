@@ -1,0 +1,690 @@
+name: 🏆 Hackathon Judge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to analyze (optional)'
+        required: false
+        type: number
+
+jobs:
+  hackathon-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Get PR Information
+      id: pr_info
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "team_name=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          echo "head_ref=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+          echo "fork_repo=${{ github.event.pull_request.head.repo.full_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "pr_number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+          echo "team_name=manual-run" >> $GITHUB_OUTPUT
+          echo "head_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "head_ref=${{ github.ref }}" >> $GITHUB_OUTPUT
+          echo "fork_repo=${{ github.repository }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Checkout Team's Code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ steps.pr_info.outputs.head_sha }}
+        fetch-depth: 0
+
+    - name: Detect Language and Framework
+      id: detect
+      run: |
+        # Language detection
+        if [ -f "package.json" ]; then
+          echo "language=javascript" >> $GITHUB_OUTPUT
+          if grep -q "react\|vue\|angular\|svelte\|next\|nuxt" package.json; then
+            echo "has_frontend=true" >> $GITHUB_OUTPUT
+            if grep -q "react" package.json; then
+              echo "framework=react" >> $GITHUB_OUTPUT
+            elif grep -q "vue" package.json; then
+              echo "framework=vue" >> $GITHUB_OUTPUT
+            elif grep -q "angular" package.json; then
+              echo "framework=angular" >> $GITHUB_OUTPUT
+            elif grep -q "next" package.json; then
+              echo "framework=nextjs" >> $GITHUB_OUTPUT
+            else
+              echo "framework=javascript" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "has_frontend=false" >> $GITHUB_OUTPUT
+            echo "framework=nodejs" >> $GITHUB_OUTPUT
+          fi
+        elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
+          echo "language=python" >> $GITHUB_OUTPUT
+          echo "has_frontend=false" >> $GITHUB_OUTPUT
+          echo "framework=python" >> $GITHUB_OUTPUT
+          if grep -q "flask\|django\|fastapi" requirements.txt pyproject.toml setup.py 2>/dev/null; then
+            echo "has_frontend=true" >> $GITHUB_OUTPUT
+            echo "framework=python-web" >> $GITHUB_OUTPUT
+          fi
+        elif [ -f "go.mod" ]; then
+          echo "language=go" >> $GITHUB_OUTPUT
+          echo "has_frontend=false" >> $GITHUB_OUTPUT
+          echo "framework=go" >> $GITHUB_OUTPUT
+        elif [ -f "pom.xml" ] || [ -f "build.gradle" ]; then
+          echo "language=java" >> $GITHUB_OUTPUT
+          echo "has_frontend=false" >> $GITHUB_OUTPUT
+          echo "framework=java" >> $GITHUB_OUTPUT
+        elif [ -f "Cargo.toml" ]; then
+          echo "language=rust" >> $GITHUB_OUTPUT
+          echo "has_frontend=false" >> $GITHUB_OUTPUT
+          echo "framework=rust" >> $GITHUB_OUTPUT
+        else
+          echo "language=generic" >> $GITHUB_OUTPUT
+          # Check for HTML files
+          html_files=$(find . -name "*.html" | head -5 | wc -l)
+          if [ $html_files -gt 0 ]; then
+            echo "has_frontend=true" >> $GITHUB_OUTPUT
+            echo "framework=html" >> $GITHUB_OUTPUT
+          else
+            echo "has_frontend=false" >> $GITHUB_OUTPUT
+            echo "framework=generic" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+    - name: Setup Environment
+      run: |
+        # Setup based on detected language
+        case "${{ steps.detect.outputs.language }}" in
+          "javascript")
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            npm --version
+            ;;
+          "python")
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip python3-venv
+            python3 --version
+            ;;
+          "go")
+            wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
+            sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+            echo "/usr/local/go/bin" >> $GITHUB_PATH
+            ;;
+        esac
+
+    # 🧩 CODE QUALITY ANALYSIS
+    - name: Analyze Code Quality
+      id: code_quality
+      run: |
+        quality_score=75  # Default score
+        issues_found=0
+        
+        case "${{ steps.detect.outputs.language }}" in
+          "javascript")
+            if [ -f "package.json" ]; then
+              npm install --only=dev 2>/dev/null || npm install 2>/dev/null || true
+              
+              # Try ESLint
+              if [ -f ".eslintrc" ] || [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+                npx eslint . --format json --output-file eslint-report.json 2>/dev/null || true
+                if [ -f "eslint-report.json" ]; then
+                  errors=$(jq '[.[] | .errorCount] | add // 0' eslint-report.json 2>/dev/null || echo 0)
+                  warnings=$(jq '[.[] | .warningCount] | add // 0' eslint-report.json 2>/dev/null || echo 0)
+                  issues_found=$((errors + warnings))
+                fi
+              else
+                # Use basic linting
+                npx eslint . --no-eslintrc --config '{"env":{"es6":true,"node":true},"extends":"eslint:recommended","parserOptions":{"ecmaVersion":2020}}' --format json --output-file eslint-report.json 2>/dev/null || true
+                if [ -f "eslint-report.json" ]; then
+                  errors=$(jq '[.[] | .errorCount] | add // 0' eslint-report.json 2>/dev/null || echo 0)
+                  warnings=$(jq '[.[] | .warningCount] | add // 0' eslint-report.json 2>/dev/null || echo 0)
+                  issues_found=$((errors + warnings))
+                fi
+              fi
+            fi
+            ;;
+          "python")
+            pip3 install pylint flake8 2>/dev/null || true
+            
+            # Run Pylint
+            python_files=$(find . -name "*.py" | head -20)
+            if [ ! -z "$python_files" ]; then
+              pylint --output-format=json $python_files > pylint-report.json 2>/dev/null || true
+              if [ -f "pylint-report.json" ] && [ -s "pylint-report.json" ]; then
+                issues_found=$(jq 'length' pylint-report.json 2>/dev/null || echo 0)
+              fi
+            fi
+            ;;
+        esac
+        
+        # Calculate quality score based on issues
+        if [ $issues_found -eq 0 ]; then
+          quality_score=95
+        elif [ $issues_found -lt 5 ]; then
+          quality_score=90
+        elif [ $issues_found -lt 15 ]; then
+          quality_score=80
+        elif [ $issues_found -lt 30 ]; then
+          quality_score=70
+        elif [ $issues_found -lt 50 ]; then
+          quality_score=60
+        else
+          quality_score=50
+        fi
+        
+        echo "quality_score=$quality_score" >> $GITHUB_OUTPUT
+        echo "issues_found=$issues_found" >> $GITHUB_OUTPUT
+
+    # 🔒 SECURITY ANALYSIS
+    - name: Analyze Security
+      id: security
+      run: |
+        security_score=100
+        high_severity=0
+        medium_severity=0
+        low_severity=0
+        
+        # Install security tools
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.18.3
+        pip3 install safety semgrep 2>/dev/null || true
+        
+        # Run Trivy vulnerability scan
+        trivy fs --format json --output trivy-results.json . 2>/dev/null || true
+        if [ -f "trivy-results.json" ]; then
+          high_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length' trivy-results.json 2>/dev/null || echo 0)
+          medium_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' trivy-results.json 2>/dev/null || echo 0)
+          low_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "LOW")] | length' trivy-results.json 2>/dev/null || echo 0)
+        fi
+        
+        # Run Semgrep
+        semgrep --config=auto --json --output=semgrep-results.json . 2>/dev/null || true
+        semgrep_issues=0
+        if [ -f "semgrep-results.json" ]; then
+          semgrep_issues=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo 0)
+        fi
+        
+        # Language-specific security checks
+        case "${{ steps.detect.outputs.language }}" in
+          "python")
+            if [ -f "requirements.txt" ]; then
+              safety check --json --output safety-results.json 2>/dev/null || true
+              if [ -f "safety-results.json" ]; then
+                safety_issues=$(jq 'length' safety-results.json 2>/dev/null || echo 0)
+                medium_severity=$((medium_severity + safety_issues))
+              fi
+            fi
+            ;;
+          "javascript")
+            if [ -f "package.json" ]; then
+              npm audit --json > npm-audit.json 2>/dev/null || true
+              if [ -f "npm-audit.json" ]; then
+                npm_high=$(jq '.vulnerabilities | to_entries[] | select(.value.severity == "high" or .value.severity == "critical") | .key' npm-audit.json 2>/dev/null | wc -l)
+                npm_medium=$(jq '.vulnerabilities | to_entries[] | select(.value.severity == "moderate") | .key' npm-audit.json 2>/dev/null | wc -l)
+                high_severity=$((high_severity + npm_high))
+                medium_severity=$((medium_severity + npm_medium))
+              fi
+            fi
+            ;;
+        esac
+        
+        # Calculate security score
+        security_score=$((security_score - high_severity * 20))
+        security_score=$((security_score - medium_severity * 10))
+        security_score=$((security_score - low_severity * 5))
+        security_score=$((security_score - semgrep_issues * 3))
+        
+        if [ $security_score -lt 0 ]; then
+          security_score=0
+        fi
+        
+        echo "security_score=$security_score" >> $GITHUB_OUTPUT
+        echo "high_severity=$high_severity" >> $GITHUB_OUTPUT
+        echo "medium_severity=$medium_severity" >> $GITHUB_OUTPUT
+        echo "low_severity=$low_severity" >> $GITHUB_OUTPUT
+
+    # 🧪 TEST COVERAGE ANALYSIS
+    - name: Analyze Test Coverage
+      id: test_coverage
+      run: |
+        coverage_percentage=0
+        test_files=0
+        has_tests=false
+        
+        case "${{ steps.detect.outputs.language }}" in
+          "javascript")
+            # Install dependencies
+            if [ -f "package.json" ]; then
+              npm install 2>/dev/null || true
+              
+              # Check for test scripts
+              if npm run test --dry-run 2>/dev/null; then
+                has_tests=true
+                # Try to run tests with coverage
+                npm test -- --coverage --watchAll=false 2>/dev/null || npm run test:coverage 2>/dev/null || npm test 2>/dev/null || true
+                
+                # Look for coverage reports
+                if [ -f "coverage/coverage-summary.json" ]; then
+                  coverage_percentage=$(jq '.total.lines.pct // 0' coverage/coverage-summary.json 2>/dev/null || echo 0)
+                elif [ -f "coverage/lcov-report/index.html" ]; then
+                  coverage_percentage=60  # Assume moderate coverage
+                fi
+              fi
+              
+              # Count test files
+              test_files=$(find . -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" | wc -l)
+            fi
+            ;;
+          "python")
+            pip3 install pytest pytest-cov coverage 2>/dev/null || true
+            
+            # Try to run tests with coverage
+            python_test_files=$(find . -name "test_*.py" -o -name "*_test.py" | wc -l)
+            if [ $python_test_files -gt 0 ]; then
+              has_tests=true
+              pytest --cov=. --cov-report=json --tb=short 2>/dev/null || true
+              
+              if [ -f "coverage.json" ]; then
+                coverage_percentage=$(jq '.totals.percent_covered // 0' coverage.json 2>/dev/null || echo 0)
+              fi
+            fi
+            test_files=$python_test_files
+            ;;
+          "go")
+            if find . -name "*_test.go" | head -1 | grep -q .; then
+              has_tests=true
+              go test -coverprofile=coverage.out -v ./... 2>/dev/null || true
+              
+              if [ -f "coverage.out" ]; then
+                coverage_percentage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//' 2>/dev/null || echo 0)
+              fi
+            fi
+            test_files=$(find . -name "*_test.go" | wc -l)
+            ;;
+        esac
+        
+        # Calculate test score
+        test_score=0
+        if [ "$has_tests" = "true" ]; then
+          test_score=$coverage_percentage
+          # Bonus for having test files
+          if [ $test_files -gt 5 ]; then
+            test_score=$((test_score + 10))
+          elif [ $test_files -gt 0 ]; then
+            test_score=$((test_score + 5))
+          fi
+        else
+          # No tests found
+          test_score=0
+        fi
+        
+        # Cap at 100
+        if [ $test_score -gt 100 ]; then
+          test_score=100
+        fi
+        
+        echo "test_score=$test_score" >> $GITHUB_OUTPUT
+        echo "coverage_percentage=${coverage_percentage%.*}" >> $GITHUB_OUTPUT
+        echo "test_files=$test_files" >> $GITHUB_OUTPUT
+        echo "has_tests=$has_tests" >> $GITHUB_OUTPUT
+
+    # 🎨 FRONTEND USABILITY ANALYSIS
+    - name: Analyze Frontend Usability
+      id: frontend_usability
+      if: steps.detect.outputs.has_frontend == 'true'
+      run: |
+        usability_score=0
+        
+        # Install tools
+        npm install -g http-server @lhci/cli lighthouse 2>/dev/null || true
+        
+        # Build frontend if possible
+        if [ -f "package.json" ]; then
+          npm run build 2>/dev/null || npm run build:prod 2>/dev/null || npm run dist 2>/dev/null || true
+        fi
+        
+        # Determine what to serve
+        if [ -d "dist" ]; then
+          serve_dir="dist"
+        elif [ -d "build" ]; then
+          serve_dir="build"
+        elif [ -d "public" ]; then
+          serve_dir="public"
+        else
+          serve_dir="."
+        fi
+        
+        # Start server
+        http-server $serve_dir -p 8080 &
+        SERVER_PID=$!
+        sleep 3
+        
+        # Run Lighthouse
+        lighthouse http://localhost:8080 --output json --output-path lighthouse-report.json --chrome-flags="--headless --no-sandbox --disable-gpu" 2>/dev/null || true
+        
+        # Kill server
+        kill $SERVER_PID 2>/dev/null || true
+        
+        # Parse Lighthouse results
+        if [ -f "lighthouse-report.json" ]; then
+          performance=$(jq '.categories.performance.score * 100' lighthouse-report.json 2>/dev/null || echo 0)
+          accessibility=$(jq '.categories.accessibility.score * 100' lighthouse-report.json 2>/dev/null || echo 0)
+          best_practices=$(jq '.categories["best-practices"].score * 100' lighthouse-report.json 2>/dev/null || echo 0)
+          seo=$(jq '.categories.seo.score * 100' lighthouse-report.json 2>/dev/null || echo 0)
+          
+          usability_score=$(echo "($performance + $accessibility + $best_practices + $seo) / 4" | bc -l 2>/dev/null || echo 0)
+          usability_score=${usability_score%.*}
+        else
+          # Fallback scoring
+          case "${{ steps.detect.outputs.framework }}" in
+            "react"|"vue"|"angular"|"nextjs")
+              usability_score=75
+              ;;
+            "python-web")
+              usability_score=70
+              ;;
+            "html")
+              usability_score=60
+              ;;
+            *)
+              usability_score=50
+              ;;
+          esac
+          
+          # Check for responsive design
+          if grep -r "viewport\|responsive\|@media" . --include="*.html" --include="*.css" --include="*.scss" 2>/dev/null | head -1 | grep -q .; then
+            usability_score=$((usability_score + 10))
+          fi
+          
+          # Check for accessibility features
+          if grep -r "alt=\|aria-\|role=" . --include="*.html" --include="*.jsx" --include="*.vue" --include="*.tsx" 2>/dev/null | head -1 | grep -q .; then
+            usability_score=$((usability_score + 10))
+          fi
+        fi
+        
+        echo "usability_score=$usability_score" >> $GITHUB_OUTPUT
+
+    - name: Set Default Frontend Score
+      if: steps.detect.outputs.has_frontend == 'false'
+      run: echo "usability_score=0" >> $GITHUB_OUTPUT
+
+    # 👥 TEAM BEHAVIOR ANALYSIS
+    - name: Analyze Team Behavior
+      id: team_behavior
+      run: |
+        # Git analysis
+        total_commits=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+        total_authors=$(git log --format='%an' | sort -u | wc -l 2>/dev/null || echo 1)
+        
+        # Commit message quality
+        if [ $total_commits -gt 0 ]; then
+          good_messages=$(git log --oneline | grep -v "^[a-f0-9]\+ \(fix\|update\|commit\|.\)$" | wc -l)
+          message_quality_ratio=$(echo "scale=2; $good_messages / $total_commits" | bc -l 2>/dev/null || echo "0.5")
+        else
+          message_quality_ratio=0
+        fi
+        
+        # GitHub activity (if this is a fork)
+        repo_name="${{ steps.pr_info.outputs.fork_repo }}"
+        if [ "$repo_name" != "${{ github.repository }}" ]; then
+          # This is from a fork, analyze the fork
+          pr_count=1  # At least this PR
+          issue_count=0
+        else
+          pr_count=0
+          issue_count=0
+        fi
+        
+        # Calculate behavior score
+        behavior_score=0
+        
+        # Commit activity (0-30 points)
+        if [ $total_commits -gt 30 ]; then
+          behavior_score=$((behavior_score + 30))
+        elif [ $total_commits -gt 15 ]; then
+          behavior_score=$((behavior_score + 25))
+        elif [ $total_commits -gt 5 ]; then
+          behavior_score=$((behavior_score + 20))
+        elif [ $total_commits -gt 0 ]; then
+          behavior_score=$((behavior_score + 15))
+        fi
+        
+        # Collaboration (0-25 points)
+        if [ $total_authors -gt 3 ]; then
+          behavior_score=$((behavior_score + 25))
+        elif [ $total_authors -gt 1 ]; then
+          behavior_score=$((behavior_score + 20))
+        else
+          behavior_score=$((behavior_score + 10))
+        fi
+        
+        # PR creation (0-20 points)
+        if [ $pr_count -gt 0 ]; then
+          behavior_score=$((behavior_score + 20))
+        fi
+        
+        # Commit message quality (0-15 points)
+        message_quality_int=$(echo "$message_quality_ratio * 100" | bc -l 2>/dev/null | cut -d. -f1)
+        if [ ${message_quality_int:-50} -gt 80 ]; then
+          behavior_score=$((behavior_score + 15))
+        elif [ ${message_quality_int:-50} -gt 60 ]; then
+          behavior_score=$((behavior_score + 10))
+        else
+          behavior_score=$((behavior_score + 5))
+        fi
+        
+        # Regular commits over time (0-10 points)
+        if [ $total_commits -gt 10 ]; then
+          first_commit=$(git log --reverse --format='%ct' | head -1 2>/dev/null || echo $(date +%s))
+          last_commit=$(git log --format='%ct' | head -1 2>/dev/null || echo $(date +%s))
+          days_active=$(( (last_commit - first_commit) / 86400 + 1 ))
+          if [ $days_active -gt 1 ]; then
+            commits_per_day=$(echo "scale=2; $total_commits / $days_active" | bc -l 2>/dev/null || echo "1")
+            if [ $(echo "$commits_per_day > 0.5" | bc -l 2>/dev/null || echo "1") -eq 1 ]; then
+              behavior_score=$((behavior_score + 10))
+            fi
+          fi
+        fi
+        
+        echo "behavior_score=$behavior_score" >> $GITHUB_OUTPUT
+        echo "total_commits=$total_commits" >> $GITHUB_OUTPUT
+        echo "total_authors=$total_authors" >> $GITHUB_OUTPUT
+
+    # 🤖 AI PROMPT QUALITY ANALYSIS
+    - name: Analyze AI Usage
+      id: ai_analysis
+      run: |
+        # Search for AI-related content
+        ai_docs=$(find . -type f \( -name "*.md" -o -name "*.txt" \) -exec grep -l -i "copilot\|chatgpt\|gpt\|ai\|prompt\|artificial intelligence" {} \; 2>/dev/null | wc -l)
+        ai_comments=$(grep -r -i "copilot\|chatgpt\|gpt\|ai.*generated\|prompt:" . --include="*.py" --include="*.js" --include="*.ts" --include="*.java" --include="*.go" 2>/dev/null | wc -l)
+        ai_commits=$(git log --grep="copilot\|ai\|gpt\|prompt" --oneline 2>/dev/null | wc -l)
+        
+        # Calculate AI score
+        ai_score=50  # Neutral base score
+        
+        # Documentation of AI usage (+25 points)
+        if [ $ai_docs -gt 0 ]; then
+          ai_score=$((ai_score + 25))
+        fi
+        
+        # Inline attribution in code (+15 points)
+        if [ $ai_comments -gt 3 ]; then
+          ai_score=$((ai_score + 15))
+        elif [ $ai_comments -gt 0 ]; then
+          ai_score=$((ai_score + 10))
+        fi
+        
+        # Commit message transparency (+10 points)
+        if [ $ai_commits -gt 0 ]; then
+          ai_score=$((ai_commits + 10))
+        fi
+        
+        # Check README for AI disclosure
+        if grep -i "copilot\|chatgpt\|gpt\|ai.*assisted" README.md 2>/dev/null; then
+          ai_score=$((ai_score + 15))
+        fi
+        
+        if [ $ai_score -gt 100 ]; then
+          ai_score=100
+        fi
+        
+        echo "ai_score=$ai_score" >> $GITHUB_OUTPUT
+        echo "ai_docs=$ai_docs" >> $GITHUB_OUTPUT
+        echo "ai_comments=$ai_comments" >> $GITHUB_OUTPUT
+
+    # 📊 CALCULATE FINAL SCORE
+    - name: Calculate Final Score
+      id: final_score
+      run: |
+        # Get scores (with defaults)
+        code_quality=${{ steps.code_quality.outputs.quality_score }}
+        security=${{ steps.security.outputs.security_score }}
+        test_coverage=${{ steps.test_coverage.outputs.test_score }}
+        frontend_usability=${{ steps.frontend_usability.outputs.usability_score || '0' }}
+        team_behavior=${{ steps.team_behavior.outputs.behavior_score }}
+        ai_quality=${{ steps.ai_analysis.outputs.ai_score }}
+        
+        # Weighted calculation
+        overall_score=$(echo "scale=1; ($code_quality * 0.25 + $security * 0.20 + $test_coverage * 0.20 + $frontend_usability * 0.15 + $team_behavior * 0.10 + $ai_quality * 0.10)" | bc -l 2>/dev/null || echo "0")
+        overall_score=${overall_score%.*}
+        
+        echo "overall_score=$overall_score" >> $GITHUB_OUTPUT
+        
+        # Create detailed report
+        mkdir -p reports
+        cat > reports/hackathon-score.json << EOF
+        {
+          "team": "${{ steps.pr_info.outputs.team_name }}",
+          "pr_number": ${{ steps.pr_info.outputs.pr_number }},
+          "repository": "${{ steps.pr_info.outputs.fork_repo }}",
+          "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "overall_score": $overall_score,
+          "max_score": 100,
+          "scores": {
+            "code_quality": $code_quality,
+            "security": $security,
+            "test_coverage": $test_coverage,
+            "frontend_usability": $frontend_usability,
+            "team_behavior": $team_behavior,
+            "ai_prompt_quality": $ai_quality
+          },
+          "details": {
+            "language": "${{ steps.detect.outputs.language }}",
+            "framework": "${{ steps.detect.outputs.framework }}",
+            "has_frontend": ${{ steps.detect.outputs.has_frontend }},
+            "has_tests": ${{ steps.test_coverage.outputs.has_tests }},
+            "test_files": ${{ steps.test_coverage.outputs.test_files }},
+            "coverage_percentage": ${{ steps.test_coverage.outputs.coverage_percentage }},
+            "security_issues": {
+              "high": ${{ steps.security.outputs.high_severity }},
+              "medium": ${{ steps.security.outputs.medium_severity }},
+              "low": ${{ steps.security.outputs.low_severity }}
+            },
+            "code_issues": ${{ steps.code_quality.outputs.issues_found }},
+            "commits": ${{ steps.team_behavior.outputs.total_commits }},
+            "authors": ${{ steps.team_behavior.outputs.total_authors }},
+            "ai_attribution": {
+              "docs": ${{ steps.ai_analysis.outputs.ai_docs }},
+              "comments": ${{ steps.ai_analysis.outputs.ai_comments }}
+            }
+          },
+          "weights": {
+            "code_quality": 0.25,
+            "security": 0.20,
+            "test_coverage": 0.20,
+            "frontend_usability": 0.15,
+            "team_behavior": 0.10,
+            "ai_prompt_quality": 0.10
+          }
+        }
+        EOF
+
+    # 💬 COMMENT ON PR
+    - name: Comment Score on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const scoreData = JSON.parse(fs.readFileSync('reports/hackathon-score.json', 'utf8'));
+          
+          // Create grade based on score
+          let grade = 'F';
+          if (scoreData.overall_score >= 90) grade = 'A';
+          else if (scoreData.overall_score >= 80) grade = 'B';
+          else if (scoreData.overall_score >= 70) grade = 'C';
+          else if (scoreData.overall_score >= 60) grade = 'D';
+          
+          // Create progress bars
+          const createProgressBar = (score, max = 100) => {
+            const filled = Math.round((score / max) * 20);
+            const empty = 20 - filled;
+            return '█'.repeat(filled) + '░'.repeat(empty);
+          };
+          
+          const comment = `## 🏆 Hackathon Judging Results
+          
+          **Team:** \`${ scoreData.team }\`  
+          **Overall Score:** **${ scoreData.overall_score }/100** (Grade: **${ grade }**)
+          
+          ### 📊 Category Breakdown
+          
+          | Category | Score | Progress | Weight |
+          |----------|-------|----------|---------|
+          | 🧩 **Code Quality** | ${ scoreData.scores.code_quality }/100 | \`${ createProgressBar(scoreData.scores.code_quality) }\` | 25% |
+          | 🔒 **Security** | ${ scoreData.scores.security }/100 | \`${ createProgressBar(scoreData.scores.security) }\` | 20% |
+          | 🧪 **Test Coverage** | ${ scoreData.scores.test_coverage }/100 | \`${ createProgressBar(scoreData.scores.test_coverage) }\` | 20% |
+          | 🎨 **Frontend Usability** | ${ scoreData.scores.frontend_usability }/100 | \`${ createProgressBar(scoreData.scores.frontend_usability) }\` | 15% |
+          | 👥 **Team Behavior** | ${ scoreData.scores.team_behavior }/100 | \`${ createProgressBar(scoreData.scores.team_behavior) }\` | 10% |
+          | 🤖 **AI Attribution** | ${ scoreData.scores.ai_prompt_quality }/100 | \`${ createProgressBar(scoreData.scores.ai_prompt_quality) }\` | 10% |
+          
+          ### 🔍 Technical Details
+          
+          **Detected Stack:** ${ scoreData.details.framework } (${ scoreData.details.language })  
+          **Frontend:** ${ scoreData.details.has_frontend ? '✅ Yes' : '❌ No' }  
+          **Tests:** ${ scoreData.details.has_tests ? '✅ Yes' : '❌ No' } (${ scoreData.details.test_files } files, ${ scoreData.details.coverage_percentage }% coverage)  
+          **Commits:** ${ scoreData.details.commits } commits by ${ scoreData.details.authors } author(s)  
+          **Security Issues:** ${ scoreData.details.security_issues.high } high, ${ scoreData.details.security_issues.medium } medium, ${ scoreData.details.security_issues.low } low  
+          
+          ### 💡 Recommendations
+          
+          ${ scoreData.scores.code_quality < 80 ? '- 🧩 **Code Quality**: Consider using linters and following coding standards\\n' : '' }${ scoreData.scores.security < 80 ? '- 🔒 **Security**: Review and fix security vulnerabilities\\n' : '' }${ scoreData.scores.test_coverage < 70 ? '- 🧪 **Testing**: Add more comprehensive tests\\n' : '' }${ scoreData.scores.frontend_usability < 70 && scoreData.details.has_frontend ? '- 🎨 **Frontend**: Improve accessibility and performance\\n' : '' }${ scoreData.scores.team_behavior < 70 ? '- 👥 **Teamwork**: Improve commit messages and collaboration\\n' : '' }${ scoreData.scores.ai_prompt_quality < 70 ? '- 🤖 **AI Attribution**: Document AI tool usage transparently\\n' : '' }
+          
+          ---
+          
+          *🤖 This analysis was generated automatically on ${ scoreData.timestamp }*  
+          *📋 [View detailed logs](https://github.com/${ context.repo.owner }/${ context.repo.repo }/actions/runs/${ context.runId })*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+    # 📁 UPLOAD RESULTS
+    - name: Upload Score Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: hackathon-score-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
+        path: reports/hackathon-score.json
+
+    # 📋 FINAL SUMMARY
+    - name: Job Summary
+      run: |
+        echo "## 🏆 Hackathon Analysis Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Team:** ${{ steps.pr_info.outputs.team_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Final Score:** ${{ steps.final_score.outputs.overall_score }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Scores by Category" >> $GITHUB_STEP_SUMMARY
+        echo "- Code Quality: ${{ steps.code_quality.outputs.quality_score }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "- Security: ${{ steps.security.outputs.security_score }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "- Test Coverage: ${{ steps.test_coverage.outputs.test_score }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend Usability: ${{ steps.frontend_usability.outputs.usability_score || '0' }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "- Team Behavior: ${{ steps.team_behavior.outputs.behavior_score }}/100" >> $GITHUB_STEP_SUMMARY
+        echo "- AI Attribution: ${{ steps.ai_analysis.outputs.ai_score }}/100" >> $GITHUB_STEP_SUMMARY
