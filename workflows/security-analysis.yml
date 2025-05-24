@@ -1,0 +1,115 @@
+name: Security Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_codeql:
+        description: 'Enable CodeQL analysis'
+        required: false
+        default: 'true'
+        type: boolean
+      enable_trivy:
+        description: 'Enable Trivy vulnerability scan'
+        required: false
+        default: 'true'
+        type: boolean
+  # Uncomment to enable automatic runs
+  # push:
+  #   branches: [ main, master ]
+  # pull_request:
+  #   branches: [ main, master ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      if: github.event.inputs.enable_codeql == 'true' || github.event_name != 'workflow_dispatch'
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, python, go, java
+      continue-on-error: true
+
+    - name: Perform CodeQL Analysis
+      if: github.event.inputs.enable_codeql == 'true' || github.event_name != 'workflow_dispatch'
+      uses: github/codeql-action/analyze@v3
+      continue-on-error: true
+
+    - name: Run Trivy vulnerability scanner
+      if: github.event.inputs.enable_trivy == 'true' || github.event_name != 'workflow_dispatch'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'json'
+        output: 'trivy-results.json'
+      continue-on-error: true
+
+    - name: Run Semgrep
+      run: |
+        pip install semgrep
+        semgrep --config=auto --json --output=semgrep-results.json . || true
+      continue-on-error: true
+
+    - name: Calculate Security Score
+      id: security_score
+      run: |
+        total_issues=0
+        high_severity=0
+        medium_severity=0
+        low_severity=0
+        
+        # Parse Trivy results
+        if [ -f "trivy-results.json" ]; then
+          high_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length' trivy-results.json 2>/dev/null || echo 0)
+          medium_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' trivy-results.json 2>/dev/null || echo 0)
+          low_severity=$(jq '[.Results[]? | .Vulnerabilities[]? | select(.Severity == "LOW")] | length' trivy-results.json 2>/dev/null || echo 0)
+        fi
+        
+        # Parse Semgrep results
+        if [ -f "semgrep-results.json" ]; then
+          semgrep_issues=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo 0)
+          total_issues=$((total_issues + semgrep_issues))
+        fi
+        
+        # Calculate score (0-100)
+        security_score=100
+        security_score=$((security_score - high_severity * 20))
+        security_score=$((security_score - medium_severity * 10))
+        security_score=$((security_score - low_severity * 5))
+        security_score=$((security_score - total_issues * 3))
+        
+        # Ensure score is not negative
+        if [ $security_score -lt 0 ]; then
+          security_score=0
+        fi
+        
+        echo "security_score=$security_score" >> $GITHUB_OUTPUT
+        echo "high_severity=$high_severity" >> $GITHUB_OUTPUT
+        echo "medium_severity=$medium_severity" >> $GITHUB_OUTPUT
+        echo "low_severity=$low_severity" >> $GITHUB_OUTPUT
+
+    - name: Generate Security Report
+      run: |
+        mkdir -p reports
+        cat > reports/security.json << EOF
+        {
+          "category": "security",
+          "score": ${{ steps.security_score.outputs.security_score }},
+          "max_score": 100,
+          "details": {
+            "high_severity_issues": ${{ steps.security_score.outputs.high_severity }},
+            "medium_severity_issues": ${{ steps.security_score.outputs.medium_severity }},
+            "low_severity_issues": ${{ steps.security_score.outputs.low_severity }},
+            "tools_used": ["trivy", "semgrep", "codeql"]
+          }
+        }
+        EOF
+
+    - name: Upload Security Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: reports/security.json
