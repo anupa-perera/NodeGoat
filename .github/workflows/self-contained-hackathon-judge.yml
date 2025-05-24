@@ -277,24 +277,37 @@ jobs:
           esac
 
           echo "SonarCloud configuration:"
-          cat sonar-project.properties
-
-      # === DOWNLOAD SONARCLOUD SCANNER ===
+          cat sonar-project.properties      # === DOWNLOAD SONARCLOUD SCANNER ===
       - name: 📥 Download SonarCloud Scanner
         run: |
           echo "Downloading SonarCloud Scanner..."
-          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
-          unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
-          mv sonar-scanner-4.8.0.2856-linux sonar-scanner
-          echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH
+          # Download the latest version that supports Java 17
+          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
+          mv sonar-scanner-5.0.1.3006-linux sonar-scanner
 
-      # === RUN SONARCLOUD ANALYSIS ===
+          # Ensure Java 17 is used by the scanner
+          export JAVA_HOME=$JAVA_HOME_17_X64
+          export PATH=$JAVA_HOME/bin:$PATH
+
+          # Verify Java version
+          java -version
+
+          echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH# === RUN SONARCLOUD ANALYSIS ===
       - name: 🔍 Run SonarCloud Analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           echo "Starting SonarCloud analysis..."
+
+          # Set Java 17 path explicitly
+          export JAVA_HOME=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.15-6/x64
+          export PATH=$JAVA_HOME/bin:$PATH
+
+          # Verify Java version being used
+          java -version
+          echo "JAVA_HOME: $JAVA_HOME"
 
           # Verify SonarCloud token is available
           if [ -z "$SONAR_TOKEN" ]; then
@@ -303,8 +316,8 @@ jobs:
             exit 1
           fi
 
-          # Run SonarCloud scan
-          sonar-scanner \
+          # Run SonarCloud scan with explicit Java home
+          SONAR_SCANNER_OPTS="-Djava.home=$JAVA_HOME" sonar-scanner \
             -Dsonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }} \
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || github.repository_owner }} \
             -Dsonar.host.url=https://sonarcloud.io \
