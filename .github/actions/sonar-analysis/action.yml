@@ -1,5 +1,5 @@
-name: "SonarCloud Analysis"
-description: "Run SonarCloud code quality analysis"
+name: SonarCloud Analysis
+description: Run SonarCloud code quality analysis
 
 inputs:
   project_key:
@@ -30,7 +30,7 @@ outputs:
     value: ${{ steps.sonar-results.outputs.sonar_url }}
 
 runs:
-  using: "composite"
+  using: composite
   steps:
     - name: 🔧 Generate SonarCloud Configuration
       shell: bash
@@ -39,6 +39,9 @@ runs:
         sonar.projectKey=${{ inputs.project_key }}
         sonar.organization=${{ inputs.organization }}
         sonar.sources=.
+        sonar.scm.provider=git
+        sonar.branch.name=${GITHUB_REF_NAME}
+        sonar.branch.target=${GITHUB_BASE_REF:-main}
         sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/*.min.js,**/vendor/**,**/.git/**,**/.github/**,**/test/**,**/tests/**,**/__tests__/**
         EOF
 
@@ -68,6 +71,8 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         SONAR_TOKEN: ${{ inputs.sonar_token }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_BASE_REF: ${{ github.base_ref }}
       run: |
         # Set Java path explicitly
         export JAVA_HOME=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.15-6/x64
@@ -81,9 +86,12 @@ runs:
           -Dsonar.projectKey=${{ inputs.project_key }} \
           -Dsonar.organization=${{ inputs.organization }} \
           -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.token=${{ inputs.sonar_token }}
+          -Dsonar.token=${{ inputs.sonar_token }} \
+          -Dsonar.branch.name=${GITHUB_REF_NAME} \
+          -Dsonar.branch.target=${GITHUB_BASE_REF:-main}
 
     - name: ⏳ Fetch SonarCloud Results
+      id: sonar-results
       shell: bash
       env:
         SONAR_TOKEN: ${{ inputs.sonar_token }}
