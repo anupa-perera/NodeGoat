@@ -248,15 +248,20 @@ jobs:
           echo "coverage_percentage=${coverage_percentage%.*}" >> $GITHUB_OUTPUT
           echo "test_files=$test_files" >> $GITHUB_OUTPUT
           echo "has_tests=$has_tests" >> $GITHUB_OUTPUT
-          echo "missing_test_areas=$missing_test_areas" >> $GITHUB_OUTPUT
-
-      # === GENERATE SONARCLOUD CONFIGURATION ===
+          echo "missing_test_areas=$missing_test_areas" >> $GITHUB_OUTPUT      # === GENERATE SONARCLOUD CONFIGURATION ===
       - name: 🔧 Generate SonarCloud Configuration
         run: |
           echo "Creating sonar-project.properties file..."
+
+          # Convert repository owner to lowercase with hyphens for SonarCloud organization
+          SONAR_ORG="${{ vars.SONAR_ORGANIZATION }}"
+          if [ -z "$SONAR_ORG" ]; then
+            SONAR_ORG=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
+          fi
+
           cat > sonar-project.properties << EOF
           sonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }}
-          sonar.organization=${{ vars.SONAR_ORGANIZATION || github.repository_owner }}
+          sonar.organization=$SONAR_ORG
           sonar.sources=.
           sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/*.min.js,**/vendor/**,**/.git/**,**/.github/**,**/test/**,**/tests/**,**/__tests__/**
           EOF
@@ -316,12 +321,19 @@ jobs:
             echo "❌ SONAR_TOKEN secret is not configured!"
             echo "Please add your SonarCloud token to repository secrets."
             exit 1
+          fi          # Set organization name (convert to lowercase with hyphens)
+          SONAR_ORG="${{ vars.SONAR_ORGANIZATION }}"
+          if [ -z "$SONAR_ORG" ]; then
+            SONAR_ORG=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
           fi
+
+          echo "Using SonarCloud organization: $SONAR_ORG"
+          echo "Project key: ${{ steps.pr_info.outputs.sonar_project_key }}"
 
           # Run SonarCloud scan with explicit Java home and full path
           SONAR_SCANNER_OPTS="-Djava.home=$JAVA_HOME" ./sonar-scanner/bin/sonar-scanner \
             -Dsonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }} \
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION || github.repository_owner }} \
+            -Dsonar.organization=$SONAR_ORG \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=$SONAR_TOKEN \
             -Dsonar.projectName="Hackathon Analysis - ${{ steps.pr_info.outputs.team_name }}" \
