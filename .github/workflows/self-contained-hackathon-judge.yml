@@ -279,21 +279,23 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        # Set JAVA_HOME explicitly to the path where actions/setup-java installs Java 17
+        # actions/setup-java sets this environment variable.
+        JAVA_HOME: ${{ env.JAVA_HOME }} # This should be the path to Java 17
       run: |
         # Download and install SonarScanner
         wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
         unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
         export PATH="$PWD/sonar-scanner-4.8.0.2856-linux/bin:$PATH"
-        
-        # Run SonarCloud analysis
+
+        # Now, when sonar-scanner runs, it should respect JAVA_HOME
+        # The 'sonar-scanner' script itself often uses JAVA_HOME if set.
         if [ "${{ steps.pr_info.outputs.is_fork }}" = "true" ]; then
-          # For fork PRs, run with PR analysis
           sonar-scanner \
             -Dsonar.pullrequest.key=${{ steps.pr_info.outputs.pr_number }} \
             -Dsonar.pullrequest.branch=${{ steps.pr_info.outputs.head_ref }} \
             -Dsonar.pullrequest.base=${{ steps.pr_info.outputs.base_ref }}
         else
-          # For direct pushes or manual runs
           sonar-scanner
         fi
 
