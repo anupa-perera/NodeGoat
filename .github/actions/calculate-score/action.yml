@@ -5,21 +5,27 @@ inputs:
   test_score:
     description: "Test coverage score"
     required: true
+    default: "0"
   sonar_score:
     description: "SonarCloud quality score"
     required: true
+    default: "0"
   security_score:
     description: "Security analysis score"
     required: true
+    default: "0"
   frontend_score:
     description: "Frontend usability score"
     required: true
+    default: "0"
   team_score:
     description: "Team behavior score"
     required: true
+    default: "0"
   ai_score:
     description: "AI attribution score"
     required: true
+    default: "0"
 
 outputs:
   overall_score:
@@ -35,10 +41,11 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: 📊 Calculate Weighted Score
+    - name: "Calculate Weighted Score"
+      id: calculate
       shell: bash
       run: |
-        # Define weights (must sum to 100)
+        # Define weights
         TEST_WEIGHT=25
         SONAR_WEIGHT=30
         SECURITY_WEIGHT=20
@@ -46,60 +53,61 @@ runs:
         TEAM_WEIGHT=10
         AI_WEIGHT=5
 
-        # Get input scores
-        test_score=${{ inputs.test_score }}
-        sonar_score=${{ inputs.sonar_score }}
-        security_score=${{ inputs.security_score }}
-        frontend_score=${{ inputs.frontend_score }}
-        team_score=${{ inputs.team_score }}
-        ai_score=${{ inputs.ai_score }}
+        echo "Starting score calculation..."
+
+        # Safely convert inputs to integers
+        safe_int() {
+          local input="$1"
+          local num=$(echo "$input" | tr -cd '0-9' | head -c 3)
+          if [[ -z "$num" ]]; then
+            echo "0"
+          else
+            if [ "$num" -gt 100 ]; then
+              echo "100"
+            else
+              echo "$num"
+            fi
+          fi
+        }
+
+        # Get validated scores
+        test_score=$(safe_int "${{ inputs.test_score }}")
+        sonar_score=$(safe_int "${{ inputs.sonar_score }}")
+        security_score=$(safe_int "${{ inputs.security_score }}")
+        frontend_score=$(safe_int "${{ inputs.frontend_score }}")
+        team_score=$(safe_int "${{ inputs.team_score }}")
+        ai_score=$(safe_int "${{ inputs.ai_score }}")
+
+        echo "Validated scores - Test: $test_score, Sonar: $sonar_score, Security: $security_score"
+        echo "Frontend: $frontend_score, Team: $team_score, AI: $ai_score"
 
         # Calculate weighted score
-        overall_score=$(echo "scale=0; ($test_score * $TEST_WEIGHT + $sonar_score * $SONAR_WEIGHT + $security_score * $SECURITY_WEIGHT + $frontend_score * $FRONTEND_WEIGHT + $team_score * $TEAM_WEIGHT + $ai_score * $AI_WEIGHT) / 100" | bc 2>/dev/null || echo "0")
+        weighted_sum=$((test_score * TEST_WEIGHT + sonar_score * SONAR_WEIGHT + security_score * SECURITY_WEIGHT + frontend_score * FRONTEND_WEIGHT + team_score * TEAM_WEIGHT + ai_score * AI_WEIGHT))
+        overall_score=$((weighted_sum / 100))
 
-        # Determine letter grade
-        if [ $overall_score -ge 90 ]; then
+        # Determine grade
+        if [ "$overall_score" -ge 90 ]; then
           grade="A"
-        elif [ $overall_score -ge 80 ]; then
+        elif [ "$overall_score" -ge 80 ]; then
           grade="B"
-        elif [ $overall_score -ge 70 ]; then
+        elif [ "$overall_score" -ge 70 ]; then
           grade="C"
-        elif [ $overall_score -ge 60 ]; then
+        elif [ "$overall_score" -ge 60 ]; then
           grade="D"
         else
           grade="F"
         fi
 
-        # Create breakdown JSON
-        breakdown=$(cat << EOF
-        {
-          "overall_score": $overall_score,
-          "grade": "$grade",
-          "components": {
-            "test_coverage": {"score": $test_score, "weight": $TEST_WEIGHT},
-            "code_quality": {"score": $sonar_score, "weight": $SONAR_WEIGHT},
-            "security": {"score": $security_score, "weight": $SECURITY_WEIGHT},
-            "frontend": {"score": $frontend_score, "weight": $FRONTEND_WEIGHT},
-            "team_behavior": {"score": $team_score, "weight": $TEAM_WEIGHT},
-            "ai_attribution": {"score": $ai_score, "weight": $AI_WEIGHT}
-          }
-        }
-        EOF
-        )
+        # Create simple breakdown JSON
+        breakdown="{\"overall_score\":$overall_score,\"grade\":\"$grade\"}"
 
-        # Save breakdown to file
+        # Save to file
         mkdir -p reports
         echo "$breakdown" > reports/score-breakdown.json
 
+        # Set outputs
         echo "overall_score=$overall_score" >> $GITHUB_OUTPUT
         echo "grade=$grade" >> $GITHUB_OUTPUT
         echo "breakdown=$breakdown" >> $GITHUB_OUTPUT
 
-        echo "✅ Final score calculated: $overall_score/100 (Grade: $grade)"
-        echo "📊 Component breakdown:"
-        echo "  - Tests & Coverage: $test_score/100 (${TEST_WEIGHT}%)"
-        echo "  - Code Quality: $sonar_score/100 (${SONAR_WEIGHT}%)"
-        echo "  - Security: $security_score/100 (${SECURITY_WEIGHT}%)"
-        echo "  - Frontend UX: $frontend_score/100 (${FRONTEND_WEIGHT}%)"
-        echo "  - Team Behavior: $team_score/100 (${TEAM_WEIGHT}%)"
-        echo "  - AI Attribution: $ai_score/100 (${AI_WEIGHT}%)"
+        echo "Final score calculated - $overall_score/100 (Grade $grade)"
