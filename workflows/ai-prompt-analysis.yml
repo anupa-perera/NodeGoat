@@ -1,0 +1,129 @@
+name: AI Prompt Quality Analysis
+
+on:
+  workflow_dispatch:
+  # Uncomment to enable automatic runs
+  # push:
+  #   branches: [ main, master ]
+  # pull_request:
+  #   branches: [ main, master ]
+
+jobs:
+  ai-prompt-analysis:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Search for AI-related Files and Comments
+      id: ai_search
+      run: |
+        # Search for AI-related documentation
+        ai_docs=$(find . -type f \( -name "*.md" -o -name "*.txt" -o -name "*.rst" \) -exec grep -l -i "copilot\|chatgpt\|gpt\|ai\|prompt\|artificial intelligence" {} \; 2>/dev/null | wc -l)
+        
+        # Search for prompt-related files
+        prompt_files=$(find . -type f \( -name "*prompt*" -o -name "*ai*" -o -name "*.prompt" \) 2>/dev/null | wc -l)
+        
+        # Search for AI comments in code
+        ai_comments=$(grep -r -i "copilot\|chatgpt\|gpt\|ai.*generated\|prompt:" . --include="*.py" --include="*.js" --include="*.ts" --include="*.java" --include="*.go" --include="*.rb" --include="*.php" 2>/dev/null | wc -l)
+        
+        # Look for .copilot or similar config files
+        config_files=$(find . -name ".copilot*" -o -name "copilot.*" -o -name "ai.config*" 2>/dev/null | wc -l)
+        
+        # Check commit messages for AI mentions
+        ai_commits=$(git log --grep="copilot\|ai\|gpt\|prompt" --oneline 2>/dev/null | wc -l)
+        
+        echo "ai_docs=$ai_docs" >> $GITHUB_OUTPUT
+        echo "prompt_files=$prompt_files" >> $GITHUB_OUTPUT
+        echo "ai_comments=$ai_comments" >> $GITHUB_OUTPUT
+        echo "config_files=$config_files" >> $GITHUB_OUTPUT
+        echo "ai_commits=$ai_commits" >> $GITHUB_OUTPUT
+
+    - name: Analyze Code Quality for AI Attribution
+      id: code_analysis
+      run: |
+        # Look for well-documented AI usage
+        documentation_score=0
+        
+        # Check for README mentions of AI tools
+        if grep -i "copilot\|chatgpt\|gpt\|ai.*assisted" README.md 2>/dev/null; then
+          documentation_score=$((documentation_score + 20))
+        fi
+        
+        # Check for AI usage documentation
+        if [ ${{ steps.ai_search.outputs.ai_docs }} -gt 0 ]; then
+          documentation_score=$((documentation_score + 15))
+        fi
+        
+        # Check for prompt files or AI configs
+        if [ ${{ steps.ai_search.outputs.prompt_files }} -gt 0 ] || [ ${{ steps.ai_search.outputs.config_files }} -gt 0 ]; then
+          documentation_score=$((documentation_score + 15))
+        fi
+        
+        # Bonus for inline AI attribution in code
+        if [ ${{ steps.ai_search.outputs.ai_comments }} -gt 5 ]; then
+          documentation_score=$((documentation_score + 10))
+        elif [ ${{ steps.ai_search.outputs.ai_comments }} -gt 0 ]; then
+          documentation_score=$((documentation_score + 5))
+        fi
+        
+        echo "documentation_score=$documentation_score" >> $GITHUB_OUTPUT
+
+    - name: Calculate AI Prompt Quality Score
+      id: prompt_score
+      run: |
+        # Base score for any AI usage indication
+        base_score=30
+        
+        # Add documentation score
+        doc_score=${{ steps.code_analysis.outputs.documentation_score }}
+        
+        # Bonus for commit message transparency
+        commit_bonus=0
+        if [ ${{ steps.ai_search.outputs.ai_commits }} -gt 2 ]; then
+          commit_bonus=15
+        elif [ ${{ steps.ai_search.outputs.ai_commits }} -gt 0 ]; then
+          commit_bonus=10
+        fi
+        
+        # Calculate final score
+        if [ ${{ steps.ai_search.outputs.ai_docs }} -gt 0 ] || [ ${{ steps.ai_search.outputs.ai_comments }} -gt 0 ] || [ ${{ steps.ai_search.outputs.ai_commits }} -gt 0 ]; then
+          # AI usage detected
+          prompt_quality_score=$((base_score + doc_score + commit_bonus))
+        else
+          # No AI usage detected - neutral score
+          prompt_quality_score=50
+        fi
+        
+        # Cap at 100
+        if [ $prompt_quality_score -gt 100 ]; then
+          prompt_quality_score=100
+        fi
+        
+        echo "prompt_quality_score=$prompt_quality_score" >> $GITHUB_OUTPUT
+
+    - name: Generate AI Prompt Quality Report
+      run: |
+        mkdir -p reports
+        cat > reports/ai-prompt-quality.json << EOF
+        {
+          "category": "ai_prompt_quality",
+          "score": ${{ steps.prompt_score.outputs.prompt_quality_score }},
+          "max_score": 100,
+          "details": {
+            "ai_documentation_files": ${{ steps.ai_search.outputs.ai_docs }},
+            "prompt_files": ${{ steps.ai_search.outputs.prompt_files }},
+            "ai_comments_in_code": ${{ steps.ai_search.outputs.ai_comments }},
+            "ai_config_files": ${{ steps.ai_search.outputs.config_files }},
+            "ai_related_commits": ${{ steps.ai_search.outputs.ai_commits }},
+            "documentation_score": ${{ steps.code_analysis.outputs.documentation_score }}
+          }
+        }
+        EOF
+
+    - name: Upload AI Prompt Quality Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: ai-prompt-quality-report
+        path: reports/ai-prompt-quality.json
