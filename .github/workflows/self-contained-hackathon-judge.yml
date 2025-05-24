@@ -42,14 +42,12 @@ jobs:
             const teamName = isPR ? context.payload.pull_request.user.login : 'manual-run';
             const headSha = isPR ? context.payload.pull_request.head.sha : context.sha;
             const forkRepo = isPR ? context.payload.pull_request.head.repo.full_name : context.repo.owner + '/' + context.repo.repo;
-            const sonarKey = `${forkRepo}_${isPR ? 'PR' + prNumber : 'manual_' + Date.now()}`.replace(/\//g, '_');
 
             core.setOutput('pr_number', prNumber);
             core.setOutput('team_name', teamName);
             core.setOutput('head_sha', headSha);
             core.setOutput('fork_repo', forkRepo);
             core.setOutput('is_fork', forkRepo !== `${context.repo.owner}/${context.repo.repo}`);
-            core.setOutput('sonar_project_key', sonarKey);
 
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -85,7 +83,7 @@ jobs:
         id: sonar_analysis
         uses: ./.github/actions/sonar-analysis
         with:
-          project_key: ${{ steps.pr_info.outputs.sonar_project_key }}
+          project_key: ${{ vars.SONAR_PROJECT_KEY }}
           organization: ${{ vars.SONAR_ORGANIZATION }}
           language: ${{ steps.detect_stack.outputs.language }}
           sonar_token: ${{ secrets.SONAR_TOKEN }}
