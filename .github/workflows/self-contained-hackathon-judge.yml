@@ -44,10 +44,6 @@ jobs:
           echo "is_fork=false" >> $GITHUB_OUTPUT
         fi
 
-        # Create unique SonarCloud project key
-        SONAR_PROJECT_KEY="${{ github.repository_owner }}_${{ github.event.repository.name }}_PR_${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
-        echo "sonar_project_key=$SONAR_PROJECT_KEY" >> $GITHUB_OUTPUT
-
     - name: Checkout Team's Code
       uses: actions/checkout@v4
       with:
@@ -124,31 +120,6 @@ jobs:
             echo "framework=generic" >> $GITHUB_OUTPUT
           fi
         fi
-
-        # Create sonar-project.properties
-        cat > sonar-project.properties << EOF
-        sonar.projectKey=${{ steps.pr_info.outputs.sonar_project_key }}
-        sonar.organization=${{ vars.SONAR_ORGANIZATION || secrets.SONAR_ORGANIZATION }}
-        sonar.host.url=https://sonarcloud.io
-        sonar.projectName=Hackathon: ${{ steps.pr_info.outputs.team_name }} (PR #${{ steps.pr_info.outputs.pr_number }})
-        sonar.sources=.
-        sonar.exclusions=node_modules/**,dist/**,build/**,*.min.js,coverage/**,reports/**,.git/**,vendor/**,venv/**,__pycache__/**
-        sonar.cpd.exclusions=**/*.min.js,**/vendor/**
-        sonar.javascript.lcov.reportPaths=coverage/lcov.info
-        sonar.python.coverage.reportPaths=coverage.xml
-        sonar.go.coverage.reportPaths=coverage.out
-        sonar.java.binaries=target/classes,build/classes
-        EOF
-
-        # Add language-specific settings
-        case "$(cat sonar-project.properties | grep language= | cut -d= -f2)" in
-          "javascript")
-            echo "sonar.javascript.environments=node,browser" >> sonar-project.properties
-            ;;
-          "python")
-            echo "sonar.python.version=3.8,3.9,3.10,3.11" >> sonar-project.properties
-            ;;
-        esac
 
     - name: Setup Environment
       run: |
