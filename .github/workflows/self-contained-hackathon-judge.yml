@@ -325,7 +325,8 @@ jobs:
           echo "JAVA_HOME: $JAVA_HOME"
 
           # Verify Node.js is available for JavaScript analysis
-          echo "Verifying Node.js availability..."          if command -v node >/dev/null 2>&1; then
+          echo "Verifying Node.js availability..."
+          if command -v node >/dev/null 2>&1; then
             echo "✅ Node.js version: $(node --version)"
             echo "✅ NPM version: $(npm --version)"
           else
