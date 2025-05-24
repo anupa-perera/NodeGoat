@@ -121,6 +121,16 @@ jobs:
           team_score: ${{ steps.team_analysis.outputs.behavior_score }}
           ai_score: ${{ steps.ai_analysis.outputs.ai_score }}
 
+      - name: 📁 Upload Analysis Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: hackathon-analysis-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
+          path: |
+            reports/
+            *.json
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: 💬 Post Results Comment
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/post-comment
@@ -145,16 +155,6 @@ jobs:
           code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
-
-      - name: 📁 Upload Analysis Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: hackathon-analysis-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
-          path: |
-            reports/
-            *.json
-          retention-days: 30
-          if-no-files-found: ignore
 
       - name: 📋 Job Summary
         run: |
