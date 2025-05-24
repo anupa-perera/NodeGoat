@@ -86,7 +86,8 @@ runs:
 
         if [ $security_score -lt 0 ]; then
           security_score=0
-        fi        echo "security_score=$security_score" >> $GITHUB_OUTPUT
+        fi        
+        echo "security_score=$security_score" >> $GITHUB_OUTPUT
         echo "high_severity=$high_severity" >> $GITHUB_OUTPUT
         echo "medium_severity=$medium_severity" >> $GITHUB_OUTPUT
         echo "low_severity=$low_severity" >> $GITHUB_OUTPUT
