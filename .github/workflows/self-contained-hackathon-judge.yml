@@ -156,9 +156,7 @@ jobs:
           # Move individual report files from root reports/ to team directory
           echo "Moving individual report files to team directory..."
           echo "Debug: Listing contents of reports/ directory:"
-          ls -la reports/ || echo "reports/ directory not found"
-
-          # List of individual report files to move
+          ls -la reports/ || echo "reports/ directory not found"          # List of individual report files to move
           REPORT_FILES=(
             "ai-analysis.json"
             "coverage-summary.json"
@@ -166,6 +164,7 @@ jobs:
             "team-analysis.json"
             "trivy-results.json"
             "score-breakdown.json"
+            "sonar-analysis-results.json"
           )
 
           for file in "${REPORT_FILES[@]}"; do
