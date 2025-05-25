@@ -155,6 +155,7 @@ jobs:
           code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
+          sonar_analysis_results: ${{ steps.sonar_analysis.outputs.analysis_results || '{}' }}
 
       - name: 📋 Job Summary
         run: |
