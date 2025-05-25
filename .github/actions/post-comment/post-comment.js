@@ -5,7 +5,8 @@
  * This script formats and posts the hackathon analysis results
  */
 
-const { Octokit } = require("@octokit/rest");
+const { getOctokit } = require("@actions/github");
+const core = require("@actions/core");
 
 // Parse inputs from environment variables
 const inputs = {
@@ -47,9 +48,7 @@ if (!github_token || !repository) {
 const [owner, repo] = repository.split("/");
 
 // Initialize Octokit
-const octokit = new Octokit({
-  auth: github_token,
-});
+const octokit = getOctokit(github_token);
 
 // Helper function to format detailed SonarCloud issues
 function formatDetailedSonarIssues(sonarResults) {
