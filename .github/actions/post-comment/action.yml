@@ -83,6 +83,10 @@ inputs:
     description: "URL to the persistent analysis report in the repository"
     required: false
     default: ""
+  html_report_file:
+    description: "Path to the generated HTML report file"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -119,6 +123,7 @@ runs:
         SONAR_ANALYSIS_RESULTS: ${{ inputs.sonar_analysis_results }}
         REPORTS_COMMITTED: ${{ inputs.reports_committed }}
         REPORT_URL: ${{ inputs.report_url }}
+        HTML_REPORT_FILE: ${{ inputs.html_report_file }}
         GITHUB_TOKEN: ${{ github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
