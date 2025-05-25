@@ -30,106 +30,15 @@ runs:
   using: "composite"
   steps:
     - name: 🔒 Security Analysis
+      id: security-scan
       shell: bash
+      env:
+        LANGUAGE: ${{ inputs.language }}
       run: |
-        security_score=100
-        high_severity=0
-        medium_severity=0
-        low_severity=0
+        cd ${{ github.action_path }}
 
-        echo "🔒 Installing security tools..."
+        # Install required dependencies
+        npm install --silent @actions/core
 
-        # Install Trivy for vulnerability scanning
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.18.3
-
-        # Install language-specific security tools
-        case "${{ inputs.language }}" in
-          "javascript")
-            echo "🔒 Running npm audit..."
-            if [ -f "package.json" ]; then
-              npm audit --json > npm-audit.json 2>/dev/null || true
-              if [ -f "npm-audit.json" ]; then
-                high_severity=$(jq -r '.metadata.vulnerabilities.high // 0' npm-audit.json)
-                medium_severity=$(jq -r '.metadata.vulnerabilities.moderate // 0' npm-audit.json)
-                low_severity=$(jq -r '.metadata.vulnerabilities.low // 0' npm-audit.json)
-              fi
-            fi
-            ;;
-          "python")
-            echo "🔒 Installing Python security tools..."
-            pip3 install safety semgrep 2>/dev/null || true
-            
-            if [ -f "requirements.txt" ]; then
-              safety check --json > safety-report.json 2>/dev/null || true
-            fi
-            ;;
-        esac        # Run Trivy filesystem scan
-        echo "🔒 Running Trivy vulnerability scan..."
-        trivy fs --format json --output trivy-results.json . 2>/dev/null || true
-        
-        # Ensure reports directory exists and copy results
-        mkdir -p reports
-        if [ -f "trivy-results.json" ]; then
-          cp trivy-results.json reports/
-          echo "📁 Trivy results saved to reports/trivy-results.json"
-        fi
-
-        if [ -f "trivy-results.json" ]; then
-          trivy_high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-results.json 2>/dev/null || echo "0")
-          trivy_medium=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' trivy-results.json 2>/dev/null || echo "0")
-          trivy_low=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' trivy-results.json 2>/dev/null || echo "0")
-          
-          high_severity=$((high_severity + trivy_high))
-          medium_severity=$((medium_severity + trivy_medium))
-          low_severity=$((low_severity + trivy_low))
-        fi
-
-        # Calculate security score
-        security_score=$((security_score - high_severity * 20))
-        security_score=$((security_score - medium_severity * 10))
-        security_score=$((security_score - low_severity * 5))
-
-        if [ $security_score -lt 0 ]; then
-          security_score=0
-        fi        
-        echo "security_score=$security_score" >> $GITHUB_OUTPUT
-        echo "high_severity=$high_severity" >> $GITHUB_OUTPUT
-        echo "medium_severity=$medium_severity" >> $GITHUB_OUTPUT
-        echo "low_severity=$low_severity" >> $GITHUB_OUTPUT
-
-        # Collect detailed vulnerability information
-        security_issues_summary=""
-        vulnerability_details="[]"
-
-        # Process npm audit results
-        if [ -f "npm-audit.json" ]; then
-          npm_issues=$(jq -r '.vulnerabilities | to_entries | map(select(.value.severity == "high" or .value.severity == "critical")) | .[0:3] | map("- **" + .key + "** (" + .value.severity + "): " + .value.title) | join("\n")' npm-audit.json 2>/dev/null || echo "")
-          if [ ! -z "$npm_issues" ]; then
-            security_issues_summary="${security_issues_summary}**NPM Dependencies:**\n${npm_issues}\n\n"
-          fi
-        fi
-
-        # Process Trivy results
-        if [ -f "trivy-results.json" ]; then
-          trivy_issues=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | .[0:3] | map("- **" + .VulnerabilityID + "** (" + .Severity + "): " + .Title) | join("\n")' trivy-results.json 2>/dev/null || echo "")
-          if [ ! -z "$trivy_issues" ]; then
-            security_issues_summary="${security_issues_summary}**Container/OS Vulnerabilities:**\n${trivy_issues}\n\n"
-          fi
-        fi
-
-        # Create vulnerability summary
-        if [ -z "$security_issues_summary" ]; then
-          if [ $((high_severity + medium_severity + low_severity)) -gt 0 ]; then
-            security_issues_summary="Security scan detected $((high_severity + medium_severity + low_severity)) issues. Run detailed security analysis for specifics."
-          else
-            security_issues_summary="No major security vulnerabilities detected."
-          fi
-        fi
-
-        # Escape for GitHub output
-        security_issues_summary=$(echo "$security_issues_summary" | tr '\n' '|')
-
-        echo "vulnerability_summary=$security_issues_summary" >> $GITHUB_OUTPUT
-        echo "security_issues=$vulnerability_details" >> $GITHUB_OUTPUT
-
-        echo "✅ Security scan complete - Score: $security_score/100 | Issues: H:$high_severity M:$medium_severity L:$low_severity"
+        # Run the security scan script
+        node security-scan.js

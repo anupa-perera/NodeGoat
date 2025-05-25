@@ -75,6 +75,7 @@ inputs:
     description: "Detailed SonarCloud analysis results JSON"
     required: false
     default: "{}"
+
 runs:
   using: "composite"
   steps:
@@ -85,192 +86,37 @@ runs:
         path: ./analysis-results/
 
     - name: 💬 Post Analysis Results
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const path = require('path');
+      shell: bash
+      env:
+        OVERALL_SCORE: ${{ inputs.overall_score }}
+        TEST_SCORE: ${{ inputs.test_score }}
+        SONAR_SCORE: ${{ inputs.sonar_score }}
+        SECURITY_SCORE: ${{ inputs.security_score }}
+        FRONTEND_SCORE: ${{ inputs.frontend_score }}
+        TEAM_SCORE: ${{ inputs.team_score }}
+        AI_SCORE: ${{ inputs.ai_score }}
+        HIGH_SEVERITY: ${{ inputs.high_severity }}
+        MEDIUM_SEVERITY: ${{ inputs.medium_severity }}
+        LOW_SEVERITY: ${{ inputs.low_severity }}
+        COVERAGE_PERCENTAGE: ${{ inputs.coverage_percentage }}
+        TEST_FILES: ${{ inputs.test_files }}
+        SONAR_STATUS: ${{ inputs.sonar_status }}
+        CODE_SMELLS: ${{ inputs.code_smells }}
+        BUGS: ${{ inputs.bugs }}
+        VULNERABILITIES: ${{ inputs.vulnerabilities }}
+        TEAM_NAME: ${{ inputs.team_name }}
+        DETECTED_STACK: ${{ inputs.detected_stack }}
+        SONAR_URL: ${{ inputs.sonar_url }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        SONAR_ANALYSIS_RESULTS: ${{ inputs.sonar_analysis_results }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+      run: |
+        cd ${{ github.action_path }}
 
-          const overall_score = parseInt('${{ inputs.overall_score }}');
-          const test_score = parseInt('${{ inputs.test_score }}');
-          const sonar_score = parseInt('${{ inputs.sonar_score }}');
-          const security_score = parseInt('${{ inputs.security_score }}');
-          const frontend_score = parseInt('${{ inputs.frontend_score }}');
-          const team_score = parseInt('${{ inputs.team_score }}');
-          const ai_score = parseInt('${{ inputs.ai_score }}');
+        # Install required dependencies
+        npm install --silent @octokit/rest
 
-          // Parse basic analysis data
-          const high_severity = parseInt('${{ inputs.high_severity }}');
-          const medium_severity = parseInt('${{ inputs.medium_severity }}');
-          const low_severity = parseInt('${{ inputs.low_severity }}');
-          const coverage_percentage = parseFloat('${{ inputs.coverage_percentage }}');
-          const test_files = parseInt('${{ inputs.test_files }}');
-          const sonar_status = '${{ inputs.sonar_status }}';
-          const code_smells = parseInt('${{ inputs.code_smells }}');
-          const bugs = parseInt('${{ inputs.bugs }}');
-          const vulnerabilities = parseInt('${{ inputs.vulnerabilities }}');
-          const total_vulnerabilities = high_severity + medium_severity + low_severity;          // Parse detailed SonarCloud analysis results
-          let detailedSonarResults = {};
-          try {
-            const sonarResultsInput = `${{ inputs.sonar_analysis_results }}`;
-            console.log('Raw SonarCloud input length:', sonarResultsInput.length);
-            console.log('Raw SonarCloud input (first 500 chars):', sonarResultsInput.substring(0, 500));
-            
-            if (sonarResultsInput && sonarResultsInput !== '{}' && sonarResultsInput.length > 2) {
-              // Check if JSON appears to be truncated
-              if (!sonarResultsInput.trim().endsWith('}') && !sonarResultsInput.trim().endsWith(']')) {
-                console.log('Warning: SonarCloud results appear to be truncated');
-                // Try to parse partial JSON by adding closing braces
-                const truncatedInput = sonarResultsInput.trim() + '}}}}';
-                try {
-                  detailedSonarResults = JSON.parse(truncatedInput);
-                  console.log('Successfully parsed truncated JSON');
-                } catch (truncatedError) {
-                  console.log('Could not parse even with added closing braces:', truncatedError.message);
-                }
-              } else {
-                detailedSonarResults = JSON.parse(sonarResultsInput);
-                console.log('Successfully parsed complete JSON');
-              }
-            }
-          } catch (error) {
-            console.log('Could not parse detailed SonarCloud results:', error.message);
-            console.log('Input that caused error:', `${{ inputs.sonar_analysis_results }}`.substring(0, 200));
-          }          // Function to format detailed SonarCloud issues
-          function formatDetailedSonarIssues(sonarResults) {
-            if (!sonarResults || !sonarResults.detailed_issues) {
-              return '';
-            }
-            
-            let formattedIssues = '';
-            const { bugs, vulnerabilities, code_smells } = sonarResults.detailed_issues;
-            
-            // Format bugs
-            if (bugs && bugs.trim() && bugs !== 'Too many issues - check SonarCloud report') {
-              formattedIssues += '\n**🐛 Bugs Found:**\n' + bugs + '\n';
-            } else if (sonarResults.summary && parseInt(sonarResults.summary.bugs) > 0) {
-              formattedIssues += '\n**🐛 Bugs Found:** ' + sonarResults.summary.bugs + ' bugs detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
-            }
-            
-            // Format vulnerabilities
-            if (vulnerabilities && vulnerabilities.trim() && vulnerabilities !== 'Too many issues - check SonarCloud report') {
-              formattedIssues += '\n**🔒 Security Vulnerabilities:**\n' + vulnerabilities + '\n';
-            } else if (sonarResults.summary && parseInt(sonarResults.summary.vulnerabilities) > 0) {
-              formattedIssues += '\n**🔒 Security Vulnerabilities:** ' + sonarResults.summary.vulnerabilities + ' vulnerabilities detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
-            }
-            
-            // Format code smells
-            if (code_smells && code_smells.trim() && code_smells !== 'Too many issues - check SonarCloud report') {
-              const smellsArray = code_smells.split('---').filter(s => s.trim());
-              const limitedSmells = smellsArray.slice(0, 5).join('---'); // Reduced from 10 to 5
-              formattedIssues += '\n**👃 Code Smells (showing first 5):**\n' + limitedSmells;
-              if (smellsArray.length > 5) {
-                formattedIssues += `\n\n*... and ${smellsArray.length - 5} more code smells. Check the [SonarCloud report](${{ inputs.sonar_url }}) for complete details.*\n`;
-              }
-            } else if (sonarResults.summary && parseInt(sonarResults.summary.code_smells) > 0) {
-              formattedIssues += '\n**👃 Code Smells:** ' + sonarResults.summary.code_smells + ' code smells detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
-            }
-            
-            return formattedIssues;
-          }
-
-          // Helper function to create progress bar
-          function createProgressBar(score) {
-            const filledBlocks = Math.floor(score / 10);
-            const emptyBlocks = 10 - filledBlocks;
-            return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
-          }
-
-          // Helper function to get grade emoji
-          function getGradeEmoji(score) {
-            if (score >= 90) return '🏆';
-            if (score >= 80) return '🥇';
-            if (score >= 70) return '🥈';
-            if (score >= 60) return '🥉';
-            return '🔧';
-          }
-
-          // Helper function to get status emoji
-          function getStatusEmoji(score) {
-            if (score >= 80) return '✅';
-            if (score >= 60) return '⚠️';
-            return '❌';
-          }
-
-          const comment = [
-            '## 🏆 Hackathon Analysis Results',
-            '',
-            '**Team:** ${{ inputs.team_name }}',
-            '**Technology Stack:** ${{ inputs.detected_stack }}',
-            '**Overall Score:** ' + getGradeEmoji(overall_score) + ' **' + overall_score + '/100**',
-            '',
-            '### 📊 Detailed Breakdown',
-            '',
-            '| Category | Score | Progress | Weight |',
-            '|----------|-------|----------|---------|',
-            '| ' + getStatusEmoji(test_score) + ' **Tests & Coverage** | ' + test_score + '/100 | `' + createProgressBar(test_score) + '` | 25% |',
-            '| ' + getStatusEmoji(sonar_score) + ' **Code Quality** | ' + sonar_score + '/100 | `' + createProgressBar(sonar_score) + '` | 30% |',
-            '| ' + getStatusEmoji(security_score) + ' **Security** | ' + security_score + '/100 | `' + createProgressBar(security_score) + '` | 20% |',
-            '| ' + getStatusEmoji(frontend_score) + ' **Frontend UX** | ' + frontend_score + '/100 | `' + createProgressBar(frontend_score) + '` | 10% |',
-            '| ' + getStatusEmoji(team_score) + ' **Team Collaboration** | ' + team_score + '/100 | `' + createProgressBar(team_score) + '` | 10% |',
-            '| ' + getStatusEmoji(ai_score) + ' **AI Attribution** | ' + ai_score + '/100 | `' + createProgressBar(ai_score) + '` | 5% |',
-            '',
-            '### 🔍 Analysis Links',
-            '- 🔗 **[SonarCloud Report](${{ inputs.sonar_url }})** - Detailed code quality analysis',
-            '- 📊 **[Full Analysis Logs](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ')** - Complete CI results',
-            '',
-            '### 🔧 Code Quality Analysis'
-          ];
-
-          // Show detailed SonarCloud issues if available
-          const detailedIssuesText = formatDetailedSonarIssues(detailedSonarResults);
-          if (detailedIssuesText) {
-            comment.push(detailedIssuesText);
-          } else {
-            // Fallback to basic summary
-            if (sonar_status !== 'UNKNOWN') {
-              const gateStatus = sonar_status === 'FAILED' ? '❌ FAILED' : '✅ PASSED';
-              comment.push('**Quality Gate:** ' + gateStatus);
-              comment.push('**Issues Found:** ' + bugs + ' Bugs | ' + code_smells + ' Code Smells | ' + vulnerabilities + ' Vulnerabilities');
-            } else {
-              comment.push('⏳ **SonarCloud analysis pending or unavailable.**');
-            }
-            comment.push('*📝 Detailed SonarCloud analysis results were not available.*');
-            comment.push('');
-          }
-
-          comment.push('### 🎯 Priority Action Items');
-          comment.push('');
-
-          // Generate action items based on findings
-          if (total_vulnerabilities > 0) {
-            comment.push('**🔒 Security:** Fix ' + total_vulnerabilities + ' vulnerabilities (' + high_severity + ' high, ' + medium_severity + ' medium, ' + low_severity + ' low)');
-          }
-
-          if (test_files === 0) {
-            comment.push('**🧪 Testing:** Create test files and achieve basic test coverage');
-          } else if (coverage_percentage < 80) {
-            comment.push('**🧪 Testing:** Increase coverage from ' + coverage_percentage.toFixed(1) + '% to 80%+');
-          }
-
-          if (bugs > 0 || code_smells > 5 || sonar_status === 'FAILED') {
-            comment.push('**🔧 Code Quality:** Address ' + bugs + ' bugs and ' + code_smells + ' code smells');
-          }
-
-          if (overall_score >= 85) {
-            comment.push('🏆 **Excellent work!** Your code meets high standards.');
-          }
-
-          comment.push('');
-          comment.push('---');
-          comment.push('');
-          comment.push('*🤖 Analysis completed on ' + new Date().toISOString().split('T')[0] + ' | PR #${{ inputs.pr_number }} | Powered by GitHub Actions*');
-
-          const finalComment = comment.join('\n');
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: finalComment
-          });
+        # Run the JavaScript script
+        node post-comment.js

@@ -34,20 +34,20 @@ jobs:
     steps:
       - name: 📋 Extract PR Information
         id: pr_info
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const isPR = context.eventName === 'pull_request';
-            const prNumber = isPR ? context.payload.pull_request.number : context.payload.inputs.pr_number;
-            const teamName = isPR ? context.payload.pull_request.user.login : 'manual-run';
-            const headSha = isPR ? context.payload.pull_request.head.sha : context.sha;
-            const forkRepo = isPR ? context.payload.pull_request.head.repo.full_name : context.repo.owner + '/' + context.repo.repo;
+        shell: bash
+        run: |
+          cd .github/scripts
 
-            core.setOutput('pr_number', prNumber);
-            core.setOutput('team_name', teamName);
-            core.setOutput('head_sha', headSha);
-            core.setOutput('fork_repo', forkRepo);
-            core.setOutput('is_fork', forkRepo !== `${context.repo.owner}/${context.repo.repo}`);
+          # Install dependencies
+          npm install --silent @actions/core @actions/github
+
+          # Set environment variables for the script
+          export GITHUB_CONTEXT='${{ toJson(github) }}'
+          export GITHUB_EVENT_NAME='${{ github.event_name }}'
+          export GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}'
+
+          # Run the extraction script
+          node extract-pr-info.js
 
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -158,23 +158,26 @@ jobs:
           sonar_analysis_results: ${{ steps.sonar_analysis.outputs.analysis_results || '{}' }}
 
       - name: 📋 Job Summary
+        shell: bash
+        env:
+          TEAM_NAME: ${{ steps.pr_info.outputs.team_name }}
+          FINAL_SCORE: ${{ steps.calculate_score.outputs.overall_score }}
+          DETECTED_STACK: ${{ steps.detect_stack.outputs.framework }}
+          DETECTED_LANGUAGE: ${{ steps.detect_stack.outputs.language }}
+          TEST_SCORE: ${{ steps.test_analysis.outputs.test_score }}
+          SONAR_SCORE: ${{ steps.sonar_analysis.outputs.sonar_score }}
+          SECURITY_SCORE: ${{ steps.security_analysis.outputs.security_score }}
+          FRONTEND_SCORE: ${{ steps.frontend_analysis.outputs.usability_score || '0' }}
+          TEAM_SCORE: ${{ steps.team_analysis.outputs.behavior_score }}
+          AI_SCORE: ${{ steps.ai_analysis.outputs.ai_score }}
+          SONAR_URL: ${{ steps.sonar_analysis.outputs.sonar_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
-          cat << 'EOF' >> $GITHUB_STEP_SUMMARY
-          ## 🏆 Hackathon Analysis Complete
+          cd .github/scripts
 
-          **Team:** ${{ steps.pr_info.outputs.team_name }}  
-          **Final Score:** ${{ steps.calculate_score.outputs.overall_score }}/100  
-          **Stack:** ${{ steps.detect_stack.outputs.framework }} (${{ steps.detect_stack.outputs.language }})
+          # Install dependencies
+          npm install --silent @actions/core
 
-          ### 📊 Score Breakdown
-          - **Tests & Coverage:** ${{ steps.test_analysis.outputs.test_score }}/100
-          - **Code Quality (SonarCloud):** ${{ steps.sonar_analysis.outputs.sonar_score }}/100
-          - **Security:** ${{ steps.security_analysis.outputs.security_score }}/100
-          - **Frontend UX:** ${{ steps.frontend_analysis.outputs.usability_score || '0' }}/100
-          - **Team Collaboration:** ${{ steps.team_analysis.outputs.behavior_score }}/100
-          - **AI Attribution:** ${{ steps.ai_analysis.outputs.ai_score }}/100
-
-          ### 🔗 Resources
-          - [SonarCloud Report](${{ steps.sonar_analysis.outputs.sonar_url }})
-          - [Analysis Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          EOF
+          # Run the summary creation script
+          node create-job-summary.js

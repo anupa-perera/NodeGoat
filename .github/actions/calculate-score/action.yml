@@ -44,70 +44,13 @@ runs:
     - name: "Calculate Weighted Score"
       id: calculate
       shell: bash
+      env:
+        TEST_SCORE: ${{ inputs.test_score }}
+        SONAR_SCORE: ${{ inputs.sonar_score }}
+        SECURITY_SCORE: ${{ inputs.security_score }}
+        FRONTEND_SCORE: ${{ inputs.frontend_score }}
+        TEAM_SCORE: ${{ inputs.team_score }}
+        AI_SCORE: ${{ inputs.ai_score }}
       run: |
-        # Define weights
-        TEST_WEIGHT=25
-        SONAR_WEIGHT=30
-        SECURITY_WEIGHT=20
-        FRONTEND_WEIGHT=10
-        TEAM_WEIGHT=10
-        AI_WEIGHT=5
-
-        echo "Starting score calculation..."
-
-        # Safely convert inputs to integers
-        safe_int() {
-          local input="$1"
-          local num=$(echo "$input" | tr -cd '0-9' | head -c 3)
-          if [[ -z "$num" ]]; then
-            echo "0"
-          else
-            if [ "$num" -gt 100 ]; then
-              echo "100"
-            else
-              echo "$num"
-            fi
-          fi
-        }
-
-        # Get validated scores
-        test_score=$(safe_int "${{ inputs.test_score }}")
-        sonar_score=$(safe_int "${{ inputs.sonar_score }}")
-        security_score=$(safe_int "${{ inputs.security_score }}")
-        frontend_score=$(safe_int "${{ inputs.frontend_score }}")
-        team_score=$(safe_int "${{ inputs.team_score }}")
-        ai_score=$(safe_int "${{ inputs.ai_score }}")
-
-        echo "Validated scores - Test: $test_score, Sonar: $sonar_score, Security: $security_score"
-        echo "Frontend: $frontend_score, Team: $team_score, AI: $ai_score"
-
-        # Calculate weighted score
-        weighted_sum=$((test_score * TEST_WEIGHT + sonar_score * SONAR_WEIGHT + security_score * SECURITY_WEIGHT + frontend_score * FRONTEND_WEIGHT + team_score * TEAM_WEIGHT + ai_score * AI_WEIGHT))
-        overall_score=$((weighted_sum / 100))
-
-        # Determine grade
-        if [ "$overall_score" -ge 90 ]; then
-          grade="A"
-        elif [ "$overall_score" -ge 80 ]; then
-          grade="B"
-        elif [ "$overall_score" -ge 70 ]; then
-          grade="C"
-        elif [ "$overall_score" -ge 60 ]; then
-          grade="D"
-        else
-          grade="F"
-        fi
-
-        # Create simple breakdown JSON
-        breakdown="{\"overall_score\":$overall_score,\"grade\":\"$grade\"}"
-
-        # Save to file
-        mkdir -p reports
-        echo "$breakdown" > reports/score-breakdown.json
-
-        # Set outputs
-        echo "overall_score=$overall_score" >> $GITHUB_OUTPUT
-        echo "grade=$grade" >> $GITHUB_OUTPUT
-        echo "breakdown=$breakdown" >> $GITHUB_OUTPUT
-
-        echo "Final score calculated - $overall_score/100 (Grade $grade)"
+        cd ${{ github.action_path }}
+        node calculate-score.js
