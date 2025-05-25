@@ -103,9 +103,12 @@ runs:
 
         if [ "$code_smells_count" != "0" ]; then
           detailed_code_smells=$(process_issues "$code_smells_response" "Code Smell")
-        fi
-
-        # Create comprehensive analysis results
+        fi        # Create comprehensive analysis results (with size limits)
+        # Limit detailed issues to prevent GitHub Actions output size limits
+        limited_bugs=$(echo "$detailed_bugs" | head -c 2000)
+        limited_vulnerabilities=$(echo "$detailed_vulnerabilities" | head -c 2000)
+        limited_code_smells=$(echo "$detailed_code_smells" | head -c 3000)
+        
         analysis_results=$(cat << EOF
         {
           "summary": {
@@ -120,16 +123,23 @@ runs:
             "security_rating": "$security_rating"
           },
           "detailed_issues": {
-            "bugs": $(echo "$detailed_bugs" | jq -Rs .),
-            "vulnerabilities": $(echo "$detailed_vulnerabilities" | jq -Rs .),
-            "code_smells": $(echo "$detailed_code_smells" | jq -Rs .)
+            "bugs": $(echo "$limited_bugs" | jq -Rs . || echo '""'),
+            "vulnerabilities": $(echo "$limited_vulnerabilities" | jq -Rs . || echo '""'),
+            "code_smells": $(echo "$limited_code_smells" | jq -Rs . || echo '""')
           }
         }
         EOF
         )
 
-        # Escape the JSON for GitHub Actions output
-        analysis_results_escaped=$(echo "$analysis_results" | jq -c .)
+        # Ensure JSON is valid and compact
+        analysis_results_escaped=$(echo "$analysis_results" | jq -c . 2>/dev/null || echo '{"summary":{"bugs":"'$bugs_count'","vulnerabilities":"'$vulnerabilities_count'","code_smells":"'$code_smells_count'"},"detailed_issues":{"bugs":"","vulnerabilities":"","code_smells":""}}')
+        
+        # Check size and truncate if necessary (GitHub Actions has ~1MB limit for outputs)
+        result_size=${#analysis_results_escaped}
+        if [ $result_size -gt 900000 ]; then
+          echo "Warning: Analysis results too large ($result_size bytes), using summary only"
+          analysis_results_escaped='{"summary":{"bugs":"'$bugs_count'","vulnerabilities":"'$vulnerabilities_count'","code_smells":"'$code_smells_count'","coverage":"'$coverage'","duplicated_lines":"'$duplicated_lines'","lines_of_code":"'$lines_of_code'","maintainability_rating":"'$maintainability_rating'","reliability_rating":"'$reliability_rating'","security_rating":"'$security_rating'"},"detailed_issues":{"bugs":"Too many issues - check SonarCloud report","vulnerabilities":"Too many issues - check SonarCloud report","code_smells":"Too many issues - check SonarCloud report"}}'
+        fi
 
         echo "analysis_results=$analysis_results_escaped" >> $GITHUB_OUTPUT
 
