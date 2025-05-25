@@ -1,4 +1,4 @@
-name: 🏆 Hackathon Judge (Simplified)
+﻿name: Hackathon Judge (Simplified)
 
 on:
   pull_request:
@@ -26,55 +26,50 @@ jobs:
   hackathon-analysis:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    environment: ${{ github.event.pull_request.head.repo.full_name != github.repository && 'hackathon-approval' || '' }}
 
     outputs:
       final_score: ${{ steps.calculate_score.outputs.overall_score }}
       sonar_url: ${{ steps.sonar_analysis.outputs.sonar_url }}
 
     steps:
-      - name: 📥 Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📋 Extract PR Information
+      - name: Extract PR Information
         id: pr_info
         shell: bash
         run: |
           cd .github/scripts
-
-          # Install dependencies
           npm install --silent @actions/core @actions/github
-
-          # Run the extraction script
           node extract-pr-info.js
 
-      - name: 🔧 Setup Development Environment
+      - name: Setup Development Environment
         uses: ./.github/actions/setup-env
         with:
           node-version: ${{ env.NODE_VERSION }}
           java-version: ${{ env.JAVA_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: 🔍 Detect Project Stack
+      - name: Detect Project Stack
         id: detect_stack
         uses: ./.github/actions/detect-stack
 
-      - name: 📦 Install Dependencies
+      - name: Install Dependencies
         uses: ./.github/actions/install-deps
         with:
           language: ${{ steps.detect_stack.outputs.language }}
           framework: ${{ steps.detect_stack.outputs.framework }}
 
-      - name: 🧪 Run Tests & Coverage
+      - name: Run Tests & Coverage
         id: test_analysis
         uses: ./.github/actions/test-coverage
         with:
           language: ${{ steps.detect_stack.outputs.language }}
 
-      - name: 🔍 SonarCloud Analysis
+      - name: SonarCloud Analysis
         id: sonar_analysis
         uses: ./.github/actions/sonar-analysis
         with:
@@ -84,28 +79,28 @@ jobs:
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔒 Security Analysis
+      - name: Security Analysis
         id: security_analysis
         uses: ./.github/actions/security-scan
         with:
           language: ${{ steps.detect_stack.outputs.language }}
 
-      - name: 🎨 Frontend Usability Analysis
+      - name: Frontend Usability Analysis
         id: frontend_analysis
         if: steps.detect_stack.outputs.has_frontend == 'true'
         uses: ./.github/actions/frontend-audit
         with:
           framework: ${{ steps.detect_stack.outputs.framework }}
 
-      - name: 👥 Team Behavior Analysis
+      - name: Team Behavior Analysis
         id: team_analysis
         uses: ./.github/actions/team-behavior
 
-      - name: 🤖 AI Usage Analysis
+      - name: AI Usage Analysis
         id: ai_analysis
         uses: ./.github/actions/ai-detection
 
-      - name: 📊 Calculate Final Score
+      - name: Calculate Final Score
         id: calculate_score
         uses: ./.github/actions/calculate-score
         with:
@@ -116,7 +111,7 @@ jobs:
           team_score: ${{ steps.team_analysis.outputs.behavior_score }}
           ai_score: ${{ steps.ai_analysis.outputs.ai_score }}
 
-      - name: 📁 Upload Analysis Reports
+      - name: Upload Analysis Reports
         uses: actions/upload-artifact@v4
         with:
           name: hackathon-analysis-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
@@ -126,61 +121,40 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: 💾 Commit Analysis Results to Repository
+      - name: Commit Analysis Results to Repository
         id: commit_results
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEAM_NAME: ${{ steps.pr_info.outputs.team_name }}
-          PR_NUMBER: ${{ steps.pr_info.outputs.pr_number }}
-          OVERALL_SCORE: ${{ steps.calculate_score.outputs.overall_score }}
-          TEST_SCORE: ${{ steps.test_analysis.outputs.test_score }}
-          SONAR_SCORE: ${{ steps.sonar_analysis.outputs.sonar_score }}
-          SECURITY_SCORE: ${{ steps.security_analysis.outputs.security_score }}
-          FRONTEND_SCORE: ${{ steps.frontend_analysis.outputs.usability_score || '0' }}
-          TEAM_SCORE: ${{ steps.team_analysis.outputs.behavior_score }}
-          AI_SCORE: ${{ steps.ai_analysis.outputs.ai_score }}
-          DETECTED_STACK: ${{ steps.detect_stack.outputs.framework }}
-          DETECTED_LANGUAGE: ${{ steps.detect_stack.outputs.language }}
-          SONAR_URL: ${{ steps.sonar_analysis.outputs.sonar_url }}
-          COVERAGE_PERCENTAGE: ${{ steps.test_analysis.outputs.coverage_percentage || '0' }}
-          TEST_FILES: ${{ steps.test_analysis.outputs.test_files || '0' }}
-          HIGH_SEVERITY: ${{ steps.security_analysis.outputs.high_severity || '0' }}
-          MEDIUM_SEVERITY: ${{ steps.security_analysis.outputs.medium_severity || '0' }}
-          LOW_SEVERITY: ${{ steps.security_analysis.outputs.low_severity || '0' }}
-          SONAR_STATUS: ${{ steps.sonar_analysis.outputs.sonar_status || 'UNKNOWN' }}
-          CODE_SMELLS: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
-          BUGS: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
-          VULNERABILITIES: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
         run: |
           # Configure git
           git config --global user.name "Hackathon Judge Bot"
           git config --global user.email "hackathon-judge@github-actions.com"
 
-          # Ensure we're on the right branch to avoid detached HEAD issues
+          # Get environment variables
+          TEAM_NAME="${{ steps.pr_info.outputs.team_name }}"
+          PR_NUMBER="${{ steps.pr_info.outputs.pr_number }}"
+          OVERALL_SCORE="${{ steps.calculate_score.outputs.overall_score }}"
+
+          echo "Creating reports for Team: $TEAM_NAME, PR: $PR_NUMBER, Score: $OVERALL_SCORE"
+
+          # Ensure we're on the right branch
           DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
           if [ -z "$DEFAULT_BRANCH" ]; then
             DEFAULT_BRANCH="main"
           fi
 
-          # Fetch all branches and checkout the default branch
           git fetch origin
           git checkout "$DEFAULT_BRANCH" || git checkout -b "$DEFAULT_BRANCH"
-
-          # Pull latest changes to avoid conflicts
           git pull origin "$DEFAULT_BRANCH" --rebase || echo "No remote changes to pull"
 
-          # Ensure we're on the right branch and pull latest changes
-          git pull origin $(git branch --show-current) || true
-
-          # Create timestamp for this analysis
+          # Create timestamp
           TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
 
           # Create reports directory structure
           REPORTS_DIR="reports/teams/${TEAM_NAME}/pr-${PR_NUMBER}"
+          echo "Creating reports directory: ${REPORTS_DIR}"
           mkdir -p "${REPORTS_DIR}"
 
-          # Create comprehensive analysis report
+          # Create analysis report
           cat > "${REPORTS_DIR}/analysis-${TIMESTAMP}.json" << EOF
           {
             "metadata": {
@@ -189,39 +163,15 @@ jobs:
               "pr_number": ${PR_NUMBER},
               "repository": "${GITHUB_REPOSITORY}",
               "commit_sha": "${GITHUB_SHA}",
-              "workflow_run_id": "${GITHUB_RUN_ID}",
-              "detected_stack": "${DETECTED_STACK}",
-              "detected_language": "${DETECTED_LANGUAGE}"
+              "workflow_run_id": "${GITHUB_RUN_ID}"
             },
             "scores": {
-              "overall_score": ${OVERALL_SCORE},
-              "test_score": ${TEST_SCORE},
-              "sonar_score": ${SONAR_SCORE},
-              "security_score": ${SECURITY_SCORE},
-              "frontend_score": ${FRONTEND_SCORE},
-              "team_score": ${TEAM_SCORE},
-              "ai_score": ${AI_SCORE}
-            },
-            "test_analysis": {
-              "coverage_percentage": ${COVERAGE_PERCENTAGE},
-              "test_files_count": ${TEST_FILES}
-            },
-            "security_analysis": {
-              "high_severity_issues": ${HIGH_SEVERITY},
-              "medium_severity_issues": ${MEDIUM_SEVERITY},
-              "low_severity_issues": ${LOW_SEVERITY}
-            },
-            "sonar_analysis": {
-              "status": "${SONAR_STATUS}",
-              "code_smells": ${CODE_SMELLS},
-              "bugs": ${BUGS},
-              "vulnerabilities": ${VULNERABILITIES},
-              "sonar_url": "${SONAR_URL}"
+              "overall_score": ${OVERALL_SCORE}
             }
           }
           EOF
 
-          # Create a summary report for the team
+          # Create summary report
           cat > "${REPORTS_DIR}/latest-summary.md" << EOF
           # Analysis Report for Team: ${TEAM_NAME}
 
@@ -232,163 +182,29 @@ jobs:
           - **Repository:** ${GITHUB_REPOSITORY}
           - **Commit:** ${GITHUB_SHA}
 
-          ## Score Breakdown
-
-          | Category | Score |
-          |----------|-------|
-          | 🧪 Tests & Coverage | ${TEST_SCORE}/100 |
-          | 🔍 Code Quality (SonarCloud) | ${SONAR_SCORE}/100 |
-          | 🔒 Security | ${SECURITY_SCORE}/100 |
-          | 🎨 Frontend Usability | ${FRONTEND_SCORE}/100 |
-          | 👥 Team Behavior | ${TEAM_SCORE}/100 |
-          | 🤖 AI Usage | ${AI_SCORE}/100 |
-
-          ## Technical Details
-
-          - **Detected Stack:** ${DETECTED_STACK}
-          - **Language:** ${DETECTED_LANGUAGE}
-          - **Test Coverage:** ${COVERAGE_PERCENTAGE}%
-          - **Test Files:** ${TEST_FILES}
-
-          ## Security Issues
-
-          - **High Severity:** ${HIGH_SEVERITY}
-          - **Medium Severity:** ${MEDIUM_SEVERITY}
-          - **Low Severity:** ${LOW_SEVERITY}
-
-          ## Code Quality (SonarCloud)
-
-          - **Status:** ${SONAR_STATUS}
-          - **Code Smells:** ${CODE_SMELLS}
-          - **Bugs:** ${BUGS}
-          - **Vulnerabilities:** ${VULNERABILITIES}
-          - **SonarCloud Report:** [View Details](${SONAR_URL})
-
           ---
-          *Generated by Hackathon Judge Bot on $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
-          EOF          
-          # Copy any existing reports to the team directory (excluding teams subdirectory to avoid recursion)
-          if [[ -d "reports" ]] && [[ "$(ls -A reports 2>/dev/null)" ]]; then
-            mkdir -p "${REPORTS_DIR}/raw-reports"
-            # Copy all files and directories except the teams directory to avoid recursion
-            find reports -maxdepth 1 -type f -exec cp {} "${REPORTS_DIR}/raw-reports/" \; 2>/dev/null || true
-            find reports -maxdepth 1 -type d ! -name "reports" ! -name "teams" -exec cp -r {} "${REPORTS_DIR}/raw-reports/" \; 2>/dev/null || true
-          fi
+          *Generated by Hackathon Judge Bot*
+          EOF
 
-          # Create a README for the reports directory if it doesn't exist
-          if [[ ! -f "reports/README.md" ]]; then
-            cat > "reports/README.md" << 'EOFREADME'
-          # Hackathon Analysis Reports
-
-          This directory contains persistent analysis reports for all hackathon submissions.
-
-          ## Structure
-
-          ```
-          reports/
-          ├── README.md              # This file
-          └── teams/                # Team-specific reports
-              └── [team-name]/      # Team directory
-                  └── pr-[number]/  # Individual PR analysis
-                      ├── analysis-[timestamp].json  # Detailed JSON report
-                      ├── latest-summary.md          # Human-readable summary
-                      └── raw-reports/              # Original analysis files
-          ```
-
-          ## Usage
-
-          - Navigate to specific teams in the `teams/` directory
-          - View `latest-summary.md` for human-readable reports
-          - Use `analysis-*.json` files for programmatic access to detailed data
-
-          ## Automated Updates
-
-          This directory is automatically updated by the Hackathon Judge GitHub Action whenever a pull request is analyzed.
-
-          EOFREADME
-          fi
-
-          # Check if there are any changes to commit
+          # Check if there are changes to commit
           if [[ -n "$(git status --porcelain)" ]]; then
-            # Add all files in the reports directory
             git add reports/
+            git commit -m " Add analysis results for ${TEAM_NAME} PR #${PR_NUMBER} (Score: ${OVERALL_SCORE}/100)"
             
-            # Commit the changes
-            git commit -m "📊 Add analysis results for ${TEAM_NAME} PR #${PR_NUMBER} (Score: ${OVERALL_SCORE}/100)
-
-          Analysis Summary:
-          - Overall Score: ${OVERALL_SCORE}/100
-          - Test Score: ${TEST_SCORE}/100
-          - Security Score: ${SECURITY_SCORE}/100
-          - Code Quality: ${SONAR_SCORE}/100
-
-          Files added:
-          - ${REPORTS_DIR}/analysis-${TIMESTAMP}.json
-          - ${REPORTS_DIR}/latest-summary.md
-
-          Automated commit by Hackathon Judge Bot"            
-            # Push the changes to the current branch
             CURRENT_BRANCH=$(git branch --show-current)
             git push origin $CURRENT_BRANCH
             echo "Reports committed and pushed successfully!"
             echo "reports_committed=true" >> $GITHUB_OUTPUT
-            echo "report_path=${REPORTS_DIR}" >> $GITHUB_OUTPUT
-            echo "report_url=https://github.com/${GITHUB_REPOSITORY}/tree/${CURRENT_BRANCH}/${REPORTS_DIR}" >> $GITHUB_OUTPUT
           else
             echo "No changes to commit"
             echo "reports_committed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 💬 Post Results Comment
+      - name: Post Results Comment
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/post-comment
         with:
           overall_score: ${{ steps.calculate_score.outputs.overall_score }}
-          test_score: ${{ steps.test_analysis.outputs.test_score }}
-          sonar_score: ${{ steps.sonar_analysis.outputs.sonar_score }}
-          sonar_url: ${{ steps.sonar_analysis.outputs.sonar_url }}
-          security_score: ${{ steps.security_analysis.outputs.security_score }}
-          frontend_score: ${{ steps.frontend_analysis.outputs.usability_score || '0' }}
-          team_score: ${{ steps.team_analysis.outputs.behavior_score }}
-          ai_score: ${{ steps.ai_analysis.outputs.ai_score }}
-          detected_stack: ${{ steps.detect_stack.outputs.framework }}
           pr_number: ${{ steps.pr_info.outputs.pr_number }}
           team_name: ${{ steps.pr_info.outputs.team_name }}
-          high_severity: ${{ steps.security_analysis.outputs.high_severity || '0' }}
-          medium_severity: ${{ steps.security_analysis.outputs.medium_severity || '0' }}
-          low_severity: ${{ steps.security_analysis.outputs.low_severity || '0' }}
-          coverage_percentage: ${{ steps.test_analysis.outputs.coverage_percentage || '0' }}
-          test_files: ${{ steps.test_analysis.outputs.test_files || '0' }}
-          sonar_status: ${{ steps.sonar_analysis.outputs.sonar_status || 'UNKNOWN' }}
-          code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
-          bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
-          vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
-          sonar_analysis_results: ${{ steps.sonar_analysis.outputs.analysis_results || '{}' }}
           reports_committed: ${{ steps.commit_results.outputs.reports_committed || 'false' }}
-          report_url: ${{ steps.commit_results.outputs.report_url || '' }}
-
-      - name: 📋 Job Summary
-        shell: bash
-        env:
-          TEAM_NAME: ${{ steps.pr_info.outputs.team_name }}
-          FINAL_SCORE: ${{ steps.calculate_score.outputs.overall_score }}
-          DETECTED_STACK: ${{ steps.detect_stack.outputs.framework }}
-          DETECTED_LANGUAGE: ${{ steps.detect_stack.outputs.language }}
-          TEST_SCORE: ${{ steps.test_analysis.outputs.test_score }}
-          SONAR_SCORE: ${{ steps.sonar_analysis.outputs.sonar_score }}
-          SECURITY_SCORE: ${{ steps.security_analysis.outputs.security_score }}
-          FRONTEND_SCORE: ${{ steps.frontend_analysis.outputs.usability_score || '0' }}
-          TEAM_SCORE: ${{ steps.team_analysis.outputs.behavior_score }}
-          AI_SCORE: ${{ steps.ai_analysis.outputs.ai_score }}
-          SONAR_URL: ${{ steps.sonar_analysis.outputs.sonar_url }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          REPORT_URL: ${{ steps.commit_results.outputs.report_url || '' }}
-        run: |
-          cd .github/scripts
-
-          # Install dependencies
-          npm install --silent @actions/core
-
-          # Run the summary creation script
-          node create-job-summary.js

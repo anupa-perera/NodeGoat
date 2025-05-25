@@ -11,18 +11,26 @@ const context = require("@actions/github").context;
 async function extractPRInfo() {
   try {
     console.log("Extracting PR information...");
+    console.log("Event name:", context.eventName);
+    console.log("Context payload:", JSON.stringify(context.payload, null, 2));
 
     const isPR = context.eventName === "pull_request";
-    const prNumber = isPR
-      ? context.payload.pull_request.number
-      : process.env.INPUT_PR_NUMBER;
-    const teamName = isPR
-      ? context.payload.pull_request.user.login
-      : "manual-run";
-    const headSha = isPR ? context.payload.pull_request.head.sha : context.sha;
-    const forkRepo = isPR
-      ? context.payload.pull_request.head.repo.full_name
-      : `${context.repo.owner}/${context.repo.repo}`;
+
+    let prNumber, teamName, headSha, forkRepo;
+
+    if (isPR) {
+      // Pull request event
+      prNumber = context.payload.pull_request.number;
+      teamName = context.payload.pull_request.user.login;
+      headSha = context.payload.pull_request.head.sha;
+      forkRepo = context.payload.pull_request.head.repo.full_name;
+    } else {
+      // Workflow dispatch or other events
+      prNumber = process.env.INPUT_PR_NUMBER || "manual";
+      teamName = context.actor || "manual-run";
+      headSha = context.sha;
+      forkRepo = `${context.repo.owner}/${context.repo.repo}`;
+    }
 
     console.log(`PR Number: ${prNumber}`);
     console.log(`Team Name: ${teamName}`);
