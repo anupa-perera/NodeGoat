@@ -113,10 +113,8 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
       run: |
-        cd ${{ github.action_path }}
-
-        # Install required dependencies
-        npm install --silent @octokit/rest
+        cd ${{ github.action_path }}        # Install required dependencies
+        npm install --silent @actions/github @actions/core
 
         # Run the JavaScript script
         node post-comment.js
