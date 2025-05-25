@@ -157,6 +157,22 @@ jobs:
           git config --global user.name "Hackathon Judge Bot"
           git config --global user.email "hackathon-judge@github-actions.com"
 
+          # Ensure we're on the right branch to avoid detached HEAD issues
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          if [ -z "$DEFAULT_BRANCH" ]; then
+            DEFAULT_BRANCH="main"
+          fi
+
+          # Fetch all branches and checkout the default branch
+          git fetch origin
+          git checkout "$DEFAULT_BRANCH" || git checkout -b "$DEFAULT_BRANCH"
+
+          # Pull latest changes to avoid conflicts
+          git pull origin "$DEFAULT_BRANCH" --rebase || echo "No remote changes to pull"
+
+          # Ensure we're on the right branch and pull latest changes
+          git pull origin $(git branch --show-current) || true
+
           # Create timestamp for this analysis
           TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
 
@@ -309,10 +325,10 @@ jobs:
           - ${REPORTS_DIR}/analysis-${TIMESTAMP}.json
           - ${REPORTS_DIR}/latest-summary.md
 
-          Automated commit by Hackathon Judge Bot"
-            
-            # Push the changes
-            git push origin HEAD
+          Automated commit by Hackathon Judge Bot"            
+            # Push the changes to the current branch
+            CURRENT_BRANCH=$(git branch --show-current)
+            git push origin $CURRENT_BRANCH
             
             echo "Reports committed and pushed successfully!"
             echo "reports_committed=true" >> $GITHUB_OUTPUT
