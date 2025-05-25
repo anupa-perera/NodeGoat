@@ -32,6 +32,12 @@ jobs:
       sonar_url: ${{ steps.sonar_analysis.outputs.sonar_url }}
 
     steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 📋 Extract PR Information
         id: pr_info
         shell: bash
@@ -41,20 +47,8 @@ jobs:
           # Install dependencies
           npm install --silent @actions/core @actions/github
 
-          # Set environment variables for the script
-          export GITHUB_CONTEXT='${{ toJson(github) }}'
-          export GITHUB_EVENT_NAME='${{ github.event_name }}'
-          export GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}'
-
           # Run the extraction script
           node extract-pr-info.js
-
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.pr_info.outputs.head_sha }}
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔧 Setup Development Environment
         uses: ./.github/actions/setup-env
