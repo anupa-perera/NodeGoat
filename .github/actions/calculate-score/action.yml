@@ -52,5 +52,11 @@ runs:
         TEAM_SCORE: ${{ inputs.team_score }}
         AI_SCORE: ${{ inputs.ai_score }}
       run: |
-        cd ${{ github.action_path }}
-        node calculate-score.js
+        # Change to workspace root to save reports
+        cd ${{ github.workspace }}
+
+        # Install required dependencies
+        npm install --silent @actions/core
+
+        # Run the score calculation script
+        node ${{ github.action_path }}/calculate-score.js
