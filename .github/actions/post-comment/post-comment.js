@@ -118,7 +118,11 @@ function formatDetailedSonarIssues(sonarResults) {
 function createProgressBar(score) {
   const filledBlocks = Math.floor(score / 10);
   const emptyBlocks = 10 - filledBlocks;
-  return "█".repeat(filledBlocks) + "░".repeat(emptyBlocks);
+  const progressBar = "█".repeat(filledBlocks) + "░".repeat(emptyBlocks);
+  console.log(
+    `🔧 Progress bar for score ${score}: "${progressBar}" (${filledBlocks} filled, ${emptyBlocks} empty)`
+  );
+  return progressBar;
 }
 
 // Helper function to get grade emoji
@@ -191,9 +195,26 @@ async function postComment() {
         inputs.sonar_analysis_results.substring(0, 200)
       );
     }
-
     const total_vulnerabilities =
       inputs.high_severity + inputs.medium_severity + inputs.low_severity;
+
+    // Debug: Log all values being used in the comment
+    console.log("🔍 Creating comment with these values:");
+    console.log(`  Team Name: "${inputs.team_name}"`);
+    console.log(`  Technology Stack: "${inputs.detected_stack}"`);
+    console.log(`  Overall Score: ${inputs.overall_score}`);
+    console.log(`  Test Score: ${inputs.test_score}`);
+    console.log(
+      `  Sonar Score: ${
+        inputs.sonar_score
+      } (type: ${typeof inputs.sonar_score})`
+    );
+    console.log(`  Security Score: ${inputs.security_score}`);
+    console.log(`  Frontend Score: ${inputs.frontend_score}`);
+    console.log(`  Team Score: ${inputs.team_score}`);
+    console.log(`  AI Score: ${inputs.ai_score}`);
+    console.log("");
+
     const comment = [
       "# 🏆 Hackathon Code Analysis Results",
       "",

@@ -16,6 +16,7 @@ runs:
   using: "composite"
   steps:
     - name: 🔍 Analyze Project Structure
+      id: detect
       shell: bash
       run: |
         cd ${{ github.action_path }}
