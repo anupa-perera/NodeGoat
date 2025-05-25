@@ -81,9 +81,10 @@ if (!SONAR_TOKEN || !SONAR_PROJECT_KEY || !SONAR_ORGANIZATION) {
     error: "SonarCloud not configured - using mock results",
     timestamp: new Date().toISOString(),
   };
-
   // Save mock result to reports directory
-  const reportsDir = "reports";
+  const reportsDir = process.env.GITHUB_WORKSPACE
+    ? `${process.env.GITHUB_WORKSPACE}/reports`
+    : "reports";
   if (!fs.existsSync(reportsDir)) {
     fs.mkdirSync(reportsDir, { recursive: true });
   }
@@ -362,10 +363,10 @@ async function fetchSonarDetails() {
     }; // Write to file and stdout
     const outputFile = "sonar-analysis-results.json";
     fs.writeFileSync(outputFile, JSON.stringify(result, null, 2));
-    console.log(`Results written to ${outputFile}`);
-
-    // Also save to reports directory for workflow processing
-    const reportsDir = "reports";
+    console.log(`Results written to ${outputFile}`); // Also save to reports directory for workflow processing
+    const reportsDir = process.env.GITHUB_WORKSPACE
+      ? `${process.env.GITHUB_WORKSPACE}/reports`
+      : "reports";
     if (!fs.existsSync(reportsDir)) {
       fs.mkdirSync(reportsDir, { recursive: true });
     }
@@ -424,10 +425,10 @@ async function fetchSonarDetails() {
       total_issues: 0,
       error: error.message,
       timestamp: new Date().toISOString(),
-    };
-
-    // Save error result to reports directory
-    const reportsDir = "reports";
+    }; // Save error result to reports directory
+    const reportsDir = process.env.GITHUB_WORKSPACE
+      ? `${process.env.GITHUB_WORKSPACE}/reports`
+      : "reports";
     if (!fs.existsSync(reportsDir)) {
       fs.mkdirSync(reportsDir, { recursive: true });
     }
