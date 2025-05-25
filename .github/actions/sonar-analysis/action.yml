@@ -41,110 +41,41 @@ runs:
       shell: bash
       env:
         SONAR_TOKEN: ${{ inputs.sonar_token }}
-        PROJECT_KEY: ${{ inputs.project_key }}
-        ORGANIZATION: ${{ inputs.organization }}
+        SONAR_PROJECT_KEY: ${{ inputs.project_key }}
+        SONAR_ORGANIZATION: ${{ inputs.organization }}
       run: |
-        echo "Fetching SonarCloud analysis results..."
+        echo "Fetching SonarCloud analysis results using Node.js script..."
 
-        # Fetch basic metrics
-        metrics_response=$(curl -s -u "$SONAR_TOKEN:" \
-          "https://sonarcloud.io/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc,sqale_rating,reliability_rating,security_rating")
+        # Run the Node.js script to fetch detailed SonarCloud data
+        cd ${{ github.action_path }}
+        node fetch-sonar-details.js > sonar_output.txt 2>&1
 
-        # Fetch detailed issues - bugs
-        bugs_response=$(curl -s -u "$SONAR_TOKEN:" \
-          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=BUG&ps=500")
+        # Extract the JSON from the output between the heredoc markers
+        analysis_results=$(grep -A 1000 "SONAR_ANALYSIS_RESULTS<<EOF" sonar_output.txt | grep -B 1000 "^EOF$" | sed '1d;$d' | tr -d '\n')
 
-        # Fetch detailed issues - vulnerabilities
-        vulnerabilities_response=$(curl -s -u "$SONAR_TOKEN:" \
-          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=VULNERABILITY&ps=500")
-
-        # Fetch detailed issues - code smells
-        code_smells_response=$(curl -s -u "$SONAR_TOKEN:" \
-          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=CODE_SMELL&ps=500")
-
-        # Parse metrics using jq
-        bugs_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="bugs") | .value // "0"')
-        vulnerabilities_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="vulnerabilities") | .value // "0"')
-        code_smells_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="code_smells") | .value // "0"')
-        coverage=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="coverage") | .value // "0"')
-        duplicated_lines=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="duplicated_lines_density") | .value // "0"')
-        lines_of_code=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="ncloc") | .value // "0"')
-        maintainability_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="sqale_rating") | .value // "1"')
-        reliability_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="reliability_rating") | .value // "1"')
-        security_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="security_rating") | .value // "1"')
-
-        # Process detailed issues
-        process_issues() {
-          local response="$1"
-          local issue_type="$2"
-          echo "$response" | jq -r --arg type "$issue_type" '
-            .issues[] | 
-            "- **\($type)**: \(.message)
-              - **File**: \(.component | sub(".*:"; ""))
-              - **Line**: \(.line // "N/A")
-              - **Severity**: \(.severity)
-              - **Rule**: \(.rule)
-              ---"
-          ' 2>/dev/null || echo ""
-        }
-
-        # Generate detailed issues output
-        detailed_bugs=""
-        detailed_vulnerabilities=""
-        detailed_code_smells=""
-
-        if [ "$bugs_count" != "0" ]; then
-          detailed_bugs=$(process_issues "$bugs_response" "Bug")
+        # Validate JSON
+        if echo "$analysis_results" | jq . > /dev/null 2>&1; then
+          echo "✅ Valid JSON output received"
+          
+          # Extract summary info for logging
+          bugs_count=$(echo "$analysis_results" | jq -r '.summary.bugs // "0"')
+          vulnerabilities_count=$(echo "$analysis_results" | jq -r '.summary.vulnerabilities // "0"')
+          code_smells_count=$(echo "$analysis_results" | jq -r '.summary.code_smells // "0"')
+          coverage=$(echo "$analysis_results" | jq -r '.summary.coverage // "0"')
+          
+          echo "SonarCloud analysis completed successfully!"
+          echo "Bugs: $bugs_count"
+          echo "Vulnerabilities: $vulnerabilities_count"
+          echo "Code Smells: $code_smells_count"
+          echo "Coverage: $coverage%"
+        else
+          echo "❌ Invalid JSON output, using fallback"
+          analysis_results='{"summary":{"bugs":"0","vulnerabilities":"0","code_smells":"0","coverage":"0","quality_gate_status":"ERROR"},"detailed_issues":{"bugs":"Error fetching data","vulnerabilities":"Error fetching data","code_smells":"Error fetching data"},"total_issues":0,"error":"JSON parsing failed"}'
         fi
 
-        if [ "$vulnerabilities_count" != "0" ]; then
-          detailed_vulnerabilities=$(process_issues "$vulnerabilities_response" "Vulnerability")
-        fi
+        # Set the output for the next action
+        echo "analysis_results=$analysis_results" >> $GITHUB_OUTPUT
 
-        if [ "$code_smells_count" != "0" ]; then
-          detailed_code_smells=$(process_issues "$code_smells_response" "Code Smell")
-        fi        # Create comprehensive analysis results (with size limits)
-        # Limit detailed issues to prevent GitHub Actions output size limits
-        limited_bugs=$(echo "$detailed_bugs" | head -c 2000)
-        limited_vulnerabilities=$(echo "$detailed_vulnerabilities" | head -c 2000)
-        limited_code_smells=$(echo "$detailed_code_smells" | head -c 3000)
-        
-        analysis_results=$(cat << EOF
-        {
-          "summary": {
-            "bugs": "$bugs_count",
-            "vulnerabilities": "$vulnerabilities_count",
-            "code_smells": "$code_smells_count",
-            "coverage": "$coverage",
-            "duplicated_lines": "$duplicated_lines",
-            "lines_of_code": "$lines_of_code",
-            "maintainability_rating": "$maintainability_rating",
-            "reliability_rating": "$reliability_rating",
-            "security_rating": "$security_rating"
-          },
-          "detailed_issues": {
-            "bugs": $(echo "$limited_bugs" | jq -Rs . || echo '""'),
-            "vulnerabilities": $(echo "$limited_vulnerabilities" | jq -Rs . || echo '""'),
-            "code_smells": $(echo "$limited_code_smells" | jq -Rs . || echo '""')
-          }
-        }
-        EOF
-        )
-
-        # Ensure JSON is valid and compact
-        analysis_results_escaped=$(echo "$analysis_results" | jq -c . 2>/dev/null || echo '{"summary":{"bugs":"'$bugs_count'","vulnerabilities":"'$vulnerabilities_count'","code_smells":"'$code_smells_count'"},"detailed_issues":{"bugs":"","vulnerabilities":"","code_smells":""}}')
-        
-        # Check size and truncate if necessary (GitHub Actions has ~1MB limit for outputs)
-        result_size=${#analysis_results_escaped}
-        if [ $result_size -gt 900000 ]; then
-          echo "Warning: Analysis results too large ($result_size bytes), using summary only"
-          analysis_results_escaped='{"summary":{"bugs":"'$bugs_count'","vulnerabilities":"'$vulnerabilities_count'","code_smells":"'$code_smells_count'","coverage":"'$coverage'","duplicated_lines":"'$duplicated_lines'","lines_of_code":"'$lines_of_code'","maintainability_rating":"'$maintainability_rating'","reliability_rating":"'$reliability_rating'","security_rating":"'$security_rating'"},"detailed_issues":{"bugs":"Too many issues - check SonarCloud report","vulnerabilities":"Too many issues - check SonarCloud report","code_smells":"Too many issues - check SonarCloud report"}}'
-        fi
-
-        echo "analysis_results=$analysis_results_escaped" >> $GITHUB_OUTPUT
-
-        echo "SonarCloud analysis completed successfully!"
-        echo "Bugs: $bugs_count"
-        echo "Vulnerabilities: $vulnerabilities_count"
-        echo "Code Smells: $code_smells_count"
-        echo "Coverage: $coverage%"
+        # Show the script output for debugging
+        echo "Script output:"
+        cat sonar_output.txt
