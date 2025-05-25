@@ -75,6 +75,14 @@ inputs:
     description: "Detailed SonarCloud analysis results JSON"
     required: false
     default: "{}"
+  reports_committed:
+    description: "Whether persistent reports were committed to the repository"
+    required: false
+    default: "false"
+  report_url:
+    description: "URL to the persistent analysis report in the repository"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -109,11 +117,15 @@ runs:
         SONAR_URL: ${{ inputs.sonar_url }}
         PR_NUMBER: ${{ inputs.pr_number }}
         SONAR_ANALYSIS_RESULTS: ${{ inputs.sonar_analysis_results }}
+        REPORTS_COMMITTED: ${{ inputs.reports_committed }}
+        REPORT_URL: ${{ inputs.report_url }}
         GITHUB_TOKEN: ${{ github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
       run: |
-        cd ${{ github.action_path }}        # Install required dependencies
+        cd ${{ github.action_path }}
+
+        # Install required dependencies
         npm install --silent @actions/github @actions/core
 
         # Run the JavaScript script

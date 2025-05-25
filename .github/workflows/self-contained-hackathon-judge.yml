@@ -14,6 +14,7 @@ on:
 permissions:
   issues: write
   pull-requests: write
+  contents: write
 
 env:
   NODE_VERSION: "18"
@@ -125,6 +126,203 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+      - name: 💾 Commit Analysis Results to Repository
+        id: commit_results
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEAM_NAME: ${{ steps.pr_info.outputs.team_name }}
+          PR_NUMBER: ${{ steps.pr_info.outputs.pr_number }}
+          OVERALL_SCORE: ${{ steps.calculate_score.outputs.overall_score }}
+          TEST_SCORE: ${{ steps.test_analysis.outputs.test_score }}
+          SONAR_SCORE: ${{ steps.sonar_analysis.outputs.sonar_score }}
+          SECURITY_SCORE: ${{ steps.security_analysis.outputs.security_score }}
+          FRONTEND_SCORE: ${{ steps.frontend_analysis.outputs.usability_score || '0' }}
+          TEAM_SCORE: ${{ steps.team_analysis.outputs.behavior_score }}
+          AI_SCORE: ${{ steps.ai_analysis.outputs.ai_score }}
+          DETECTED_STACK: ${{ steps.detect_stack.outputs.framework }}
+          DETECTED_LANGUAGE: ${{ steps.detect_stack.outputs.language }}
+          SONAR_URL: ${{ steps.sonar_analysis.outputs.sonar_url }}
+          COVERAGE_PERCENTAGE: ${{ steps.test_analysis.outputs.coverage_percentage || '0' }}
+          TEST_FILES: ${{ steps.test_analysis.outputs.test_files || '0' }}
+          HIGH_SEVERITY: ${{ steps.security_analysis.outputs.high_severity || '0' }}
+          MEDIUM_SEVERITY: ${{ steps.security_analysis.outputs.medium_severity || '0' }}
+          LOW_SEVERITY: ${{ steps.security_analysis.outputs.low_severity || '0' }}
+          SONAR_STATUS: ${{ steps.sonar_analysis.outputs.sonar_status || 'UNKNOWN' }}
+          CODE_SMELLS: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
+          BUGS: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
+          VULNERABILITIES: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
+        run: |
+          # Configure git
+          git config --global user.name "Hackathon Judge Bot"
+          git config --global user.email "hackathon-judge@github-actions.com"
+
+          # Create timestamp for this analysis
+          TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
+
+          # Create reports directory structure
+          REPORTS_DIR="reports/teams/${TEAM_NAME}/pr-${PR_NUMBER}"
+          mkdir -p "${REPORTS_DIR}"
+
+          # Create comprehensive analysis report
+          cat > "${REPORTS_DIR}/analysis-${TIMESTAMP}.json" << EOF
+          {
+            "metadata": {
+              "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+              "team_name": "${TEAM_NAME}",
+              "pr_number": ${PR_NUMBER},
+              "repository": "${GITHUB_REPOSITORY}",
+              "commit_sha": "${GITHUB_SHA}",
+              "workflow_run_id": "${GITHUB_RUN_ID}",
+              "detected_stack": "${DETECTED_STACK}",
+              "detected_language": "${DETECTED_LANGUAGE}"
+            },
+            "scores": {
+              "overall_score": ${OVERALL_SCORE},
+              "test_score": ${TEST_SCORE},
+              "sonar_score": ${SONAR_SCORE},
+              "security_score": ${SECURITY_SCORE},
+              "frontend_score": ${FRONTEND_SCORE},
+              "team_score": ${TEAM_SCORE},
+              "ai_score": ${AI_SCORE}
+            },
+            "test_analysis": {
+              "coverage_percentage": ${COVERAGE_PERCENTAGE},
+              "test_files_count": ${TEST_FILES}
+            },
+            "security_analysis": {
+              "high_severity_issues": ${HIGH_SEVERITY},
+              "medium_severity_issues": ${MEDIUM_SEVERITY},
+              "low_severity_issues": ${LOW_SEVERITY}
+            },
+            "sonar_analysis": {
+              "status": "${SONAR_STATUS}",
+              "code_smells": ${CODE_SMELLS},
+              "bugs": ${BUGS},
+              "vulnerabilities": ${VULNERABILITIES},
+              "sonar_url": "${SONAR_URL}"
+            }
+          }
+          EOF
+
+          # Create a summary report for the team
+          cat > "${REPORTS_DIR}/latest-summary.md" << EOF
+          # Analysis Report for Team: ${TEAM_NAME}
+
+          **PR #${PR_NUMBER} Analysis Results**
+
+          - **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Overall Score:** ${OVERALL_SCORE}/100
+          - **Repository:** ${GITHUB_REPOSITORY}
+          - **Commit:** ${GITHUB_SHA}
+
+          ## Score Breakdown
+
+          | Category | Score |
+          |----------|-------|
+          | 🧪 Tests & Coverage | ${TEST_SCORE}/100 |
+          | 🔍 Code Quality (SonarCloud) | ${SONAR_SCORE}/100 |
+          | 🔒 Security | ${SECURITY_SCORE}/100 |
+          | 🎨 Frontend Usability | ${FRONTEND_SCORE}/100 |
+          | 👥 Team Behavior | ${TEAM_SCORE}/100 |
+          | 🤖 AI Usage | ${AI_SCORE}/100 |
+
+          ## Technical Details
+
+          - **Detected Stack:** ${DETECTED_STACK}
+          - **Language:** ${DETECTED_LANGUAGE}
+          - **Test Coverage:** ${COVERAGE_PERCENTAGE}%
+          - **Test Files:** ${TEST_FILES}
+
+          ## Security Issues
+
+          - **High Severity:** ${HIGH_SEVERITY}
+          - **Medium Severity:** ${MEDIUM_SEVERITY}
+          - **Low Severity:** ${LOW_SEVERITY}
+
+          ## Code Quality (SonarCloud)
+
+          - **Status:** ${SONAR_STATUS}
+          - **Code Smells:** ${CODE_SMELLS}
+          - **Bugs:** ${BUGS}
+          - **Vulnerabilities:** ${VULNERABILITIES}
+          - **SonarCloud Report:** [View Details](${SONAR_URL})
+
+          ---
+          *Generated by Hackathon Judge Bot on $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
+          EOF
+
+          # Copy any existing reports to the team directory
+          if [[ -d "reports" ]] && [[ "$(ls -A reports 2>/dev/null)" ]]; then
+            mkdir -p "${REPORTS_DIR}/raw-reports"
+            cp -r reports/* "${REPORTS_DIR}/raw-reports/" 2>/dev/null || true
+          fi
+
+          # Create a README for the reports directory if it doesn't exist
+          if [[ ! -f "reports/README.md" ]]; then
+            cat > "reports/README.md" << 'EOFREADME'
+          # Hackathon Analysis Reports
+
+          This directory contains persistent analysis reports for all hackathon submissions.
+
+          ## Structure
+
+          ```
+          reports/
+          ├── README.md              # This file
+          └── teams/                # Team-specific reports
+              └── [team-name]/      # Team directory
+                  └── pr-[number]/  # Individual PR analysis
+                      ├── analysis-[timestamp].json  # Detailed JSON report
+                      ├── latest-summary.md          # Human-readable summary
+                      └── raw-reports/              # Original analysis files
+          ```
+
+          ## Usage
+
+          - Navigate to specific teams in the `teams/` directory
+          - View `latest-summary.md` for human-readable reports
+          - Use `analysis-*.json` files for programmatic access to detailed data
+
+          ## Automated Updates
+
+          This directory is automatically updated by the Hackathon Judge GitHub Action whenever a pull request is analyzed.
+
+          EOFREADME
+          fi
+
+          # Check if there are any changes to commit
+          if [[ -n "$(git status --porcelain)" ]]; then
+            # Add all files in the reports directory
+            git add reports/
+            
+            # Commit the changes
+            git commit -m "📊 Add analysis results for ${TEAM_NAME} PR #${PR_NUMBER} (Score: ${OVERALL_SCORE}/100)
+
+          Analysis Summary:
+          - Overall Score: ${OVERALL_SCORE}/100
+          - Test Score: ${TEST_SCORE}/100
+          - Security Score: ${SECURITY_SCORE}/100
+          - Code Quality: ${SONAR_SCORE}/100
+
+          Files added:
+          - ${REPORTS_DIR}/analysis-${TIMESTAMP}.json
+          - ${REPORTS_DIR}/latest-summary.md
+
+          Automated commit by Hackathon Judge Bot"
+            
+            # Push the changes
+            git push origin HEAD
+            
+            echo "Reports committed and pushed successfully!"
+            echo "reports_committed=true" >> $GITHUB_OUTPUT
+            echo "report_path=${REPORTS_DIR}" >> $GITHUB_OUTPUT
+            echo "report_url=https://github.com/${GITHUB_REPOSITORY}/tree/main/${REPORTS_DIR}" >> $GITHUB_OUTPUT
+          else
+            echo "No changes to commit"
+            echo "reports_committed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 💬 Post Results Comment
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/post-comment
@@ -150,6 +348,8 @@ jobs:
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
           sonar_analysis_results: ${{ steps.sonar_analysis.outputs.analysis_results || '{}' }}
+          reports_committed: ${{ steps.commit_results.outputs.reports_committed || 'false' }}
+          report_url: ${{ steps.commit_results.outputs.report_url || '' }}
 
       - name: 📋 Job Summary
         shell: bash
@@ -167,6 +367,7 @@ jobs:
           SONAR_URL: ${{ steps.sonar_analysis.outputs.sonar_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          REPORT_URL: ${{ steps.commit_results.outputs.report_url || '' }}
         run: |
           cd .github/scripts
 
