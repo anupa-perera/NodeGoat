@@ -59,7 +59,7 @@ function escapeForJson(text) {
     .replace(/\t/g, "\\t");
 }
 
-// Format issues into readable text
+// Format issues into readable text with enhanced details
 function formatIssues(issues, type) {
   if (!issues || issues.length === 0) {
     return "";
@@ -76,8 +76,10 @@ function formatIssues(issues, type) {
         : "Unknown file";
       const line = issue.line || "?";
       const message = escapeForJson(issue.message || "No message");
+      const rule = issue.rule || "unknown-rule";
+      const effort = issue.effort || "N/A";
 
-      return `- **${severity}** in \`${component}:${line}\` - ${message}`;
+      return `- **${severity}** in \`${component}:${line}\` - ${message} (Rule: ${rule}, Effort: ${effort})`;
     })
     .join("\n");
 
@@ -93,6 +95,114 @@ function formatIssues(issues, type) {
   return formatted;
 }
 
+// Create detailed issue report with file locations and line numbers
+function createDetailedIssueReport(issues) {
+  const report = {
+    total_count: issues.length,
+    by_severity: {},
+    by_file: {},
+    by_rule: {},
+    issues: [],
+  };
+
+  // Group by severity
+  issues.forEach((issue) => {
+    const severity = issue.severity || "UNKNOWN";
+    if (!report.by_severity[severity]) {
+      report.by_severity[severity] = 0;
+    }
+    report.by_severity[severity]++;
+  });
+
+  // Group by file
+  issues.forEach((issue) => {
+    const component = issue.component
+      ? issue.component.replace(/^[^:]+:/, "")
+      : "Unknown file";
+    if (!report.by_file[component]) {
+      report.by_file[component] = [];
+    }
+    report.by_file[component].push({
+      line: issue.line || null,
+      severity: issue.severity || "UNKNOWN",
+      type: issue.type || "UNKNOWN",
+      message: issue.message || "No message",
+      rule: issue.rule || "unknown-rule",
+      effort: issue.effort || "N/A",
+    });
+  });
+
+  // Group by rule
+  issues.forEach((issue) => {
+    const rule = issue.rule || "unknown-rule";
+    if (!report.by_rule[rule]) {
+      report.by_rule[rule] = {
+        count: 0,
+        description: issue.ruleName || rule,
+        files: [],
+      };
+    }
+    report.by_rule[rule].count++;
+
+    const component = issue.component
+      ? issue.component.replace(/^[^:]+:/, "")
+      : "Unknown file";
+    const fileEntry = `${component}:${issue.line || "?"}`;
+    if (!report.by_rule[rule].files.includes(fileEntry)) {
+      report.by_rule[rule].files.push(fileEntry);
+    }
+  });
+
+  // Add individual issues for detailed view (limit to prevent huge output)
+  report.issues = issues.slice(0, 20).map((issue) => ({
+    file: issue.component
+      ? issue.component.replace(/^[^:]+:/, "")
+      : "Unknown file",
+    line: issue.line || null,
+    severity: issue.severity || "UNKNOWN",
+    type: issue.type || "UNKNOWN",
+    message: issue.message || "No message",
+    rule: issue.rule || "unknown-rule",
+    effort: issue.effort || "N/A",
+    creation_date: issue.creationDate || null,
+    update_date: issue.updateDate || null,
+  }));
+  return report;
+}
+
+// Helper function to get most affected files
+function getMostAffectedFiles(allIssues) {
+  const fileCounts = {};
+
+  allIssues.forEach((issue) => {
+    const component = issue.component
+      ? issue.component.replace(/^[^:]+:/, "")
+      : "Unknown";
+    if (component !== "Unknown") {
+      if (!fileCounts[component]) {
+        fileCounts[component] = { count: 0, issues: [] };
+      }
+      fileCounts[component].count++;
+      fileCounts[component].issues.push({
+        type: issue.type,
+        severity: issue.severity,
+        line: issue.line,
+        message: issue.message,
+      });
+    }
+  });
+
+  // Sort by count and return top 10
+  return Object.entries(fileCounts)
+    .sort(([, a], [, b]) => b.count - a.count)
+    .slice(0, 10)
+    .map(([file, data]) => ({
+      file,
+      issue_count: data.count,
+      issues: data.issues.slice(0, 5), // Limit to first 5 issues per file
+    }));
+}
+
 async function fetchSonarDetails() {
   try {
     console.log("Fetching SonarCloud analysis details...");
@@ -106,10 +216,8 @@ async function fetchSonarDetails() {
       measuresResponse.component.measures.forEach((measure) => {
         measures[measure.metric] = measure.value;
       });
-    }
-
-    // Fetch detailed issues
-    const issuesUrl = `https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&ps=500&facets=severities,types`;
+    } // Fetch detailed issues with expanded fields
+    const issuesUrl = `https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&ps=500&facets=severities,types&additionalFields=comments`;
     const issuesResponse = await makeRequest(issuesUrl);
 
     console.log(`Found ${issuesResponse.total || 0} total issues`);
@@ -129,7 +237,12 @@ async function fetchSonarDetails() {
       `Bugs: ${bugs.length}, Vulnerabilities: ${vulnerabilities.length}, Code Smells: ${codeSmells.length}`
     );
 
-    // Create the final result object
+    // Create detailed reports for each issue type
+    const bugsReport = createDetailedIssueReport(bugs);
+    const vulnerabilitiesReport = createDetailedIssueReport(vulnerabilities);
+    const codeSmellsReport = createDetailedIssueReport(codeSmells);
+
+    // Create the final result object with enhanced structure
     const result = {
       summary: {
         bugs: measures.bugs || "0",
@@ -137,29 +250,57 @@ async function fetchSonarDetails() {
         code_smells: measures.code_smells || "0",
         coverage: measures.coverage || "0",
         quality_gate_status: measures.quality_gate_details || "UNKNOWN",
+        sonar_project_url: `https://sonarcloud.io/project/overview?id=${SONAR_PROJECT_KEY}`,
+        analysis_date: new Date().toISOString(),
       },
       detailed_issues: {
         bugs: formatIssues(bugs, "BUG"),
         vulnerabilities: formatIssues(vulnerabilities, "VULNERABILITY"),
         code_smells: formatIssues(codeSmells, "CODE_SMELL"),
       },
+      detailed_reports: {
+        bugs: bugsReport,
+        vulnerabilities: vulnerabilitiesReport,
+        code_smells: codeSmellsReport,
+      },
+      files_affected: {
+        total_files: new Set(
+          [...bugs, ...vulnerabilities, ...codeSmells]
+            .map((issue) =>
+              issue.component
+                ? issue.component.replace(/^[^:]+:/, "")
+                : "Unknown"
+            )
+            .filter((file) => file !== "Unknown")
+        ).size,
+        most_affected_files: getMostAffectedFiles([
+          ...bugs,
+          ...vulnerabilities,
+          ...codeSmells,
+        ]),
+      },
       total_issues: issuesResponse.total || 0,
       timestamp: new Date().toISOString(),
-    };
-
-    // Write to file and stdout
+    }; // Write to file and stdout
     const outputFile = "sonar-analysis-results.json";
     fs.writeFileSync(outputFile, JSON.stringify(result, null, 2));
     console.log(`Results written to ${outputFile}`);
+
+    // Also save to reports directory for workflow processing
+    const reportsDir = "reports";
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+    const reportsFile = `${reportsDir}/sonar-analysis-results.json`;
+    fs.writeFileSync(reportsFile, JSON.stringify(result, null, 2));
+    console.log(`📁 SonarCloud analysis saved to ${reportsFile}`);
 
     // Output the JSON for GitHub Actions to capture
     console.log("SONAR_ANALYSIS_RESULTS<<EOF");
     console.log(JSON.stringify(result));
     console.log("EOF");
   } catch (error) {
-    console.error("Error fetching SonarCloud details:", error.message);
-
-    // Output empty result on error
+    console.error("Error fetching SonarCloud details:", error.message); // Output empty result on error
     const errorResult = {
       summary: {
         bugs: "0",
@@ -167,12 +308,54 @@ async function fetchSonarDetails() {
         code_smells: "0",
         coverage: "0",
         quality_gate_status: "ERROR",
+        sonar_project_url: `https://sonarcloud.io/project/overview?id=${SONAR_PROJECT_KEY}`,
+        analysis_date: new Date().toISOString(),
       },
-      detailed_issues: { bugs: "", vulnerabilities: "", code_smells: "" },
+      detailed_issues: {
+        bugs: "",
+        vulnerabilities: "",
+        code_smells: "",
+      },
+      detailed_reports: {
+        bugs: {
+          total_count: 0,
+          by_severity: {},
+          by_file: {},
+          by_rule: {},
+          issues: [],
+        },
+        vulnerabilities: {
+          total_count: 0,
+          by_severity: {},
+          by_file: {},
+          by_rule: {},
+          issues: [],
+        },
+        code_smells: {
+          total_count: 0,
+          by_severity: {},
+          by_file: {},
+          by_rule: {},
+          issues: [],
+        },
+      },
+      files_affected: {
+        total_files: 0,
+        most_affected_files: [],
+      },
       total_issues: 0,
       error: error.message,
       timestamp: new Date().toISOString(),
     };
+
+    // Save error result to reports directory
+    const reportsDir = "reports";
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+    const reportsFile = `${reportsDir}/sonar-analysis-results.json`;
+    fs.writeFileSync(reportsFile, JSON.stringify(errorResult, null, 2));
+    console.log(`📁 SonarCloud error report saved to ${reportsFile}`);
 
     console.log("SONAR_ANALYSIS_RESULTS<<EOF");
     console.log(JSON.stringify(errorResult));
