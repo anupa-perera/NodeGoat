@@ -1,4 +1,6 @@
 const core = require("@actions/core");
+const fs = require("fs");
+const path = require("path");
 const { execSync } = require("child_process");
 
 /**
@@ -12,6 +14,16 @@ async function analyzeTeamBehavior() {
     let messageQuality = 0;
 
     console.log("👥 Analyzing team collaboration patterns...");
+
+    // Create reports directory in workspace root
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+
+    // Change to workspace root for git analysis
+    process.chdir(workspaceRoot);
 
     // Get total commits
     try {
@@ -149,10 +161,8 @@ async function analyzeTeamBehavior() {
     const fs = require("fs");
     if (!fs.existsSync("reports")) {
       fs.mkdirSync("reports", { recursive: true });
-    }
-
-    fs.writeFileSync(
-      "reports/team-analysis.json",
+    }    fs.writeFileSync(
+      path.join(reportsDir, "team-analysis.json"),
       JSON.stringify(teamAnalysis, null, 2)
     );
     console.log("📁 Team analysis saved to reports/team-analysis.json");

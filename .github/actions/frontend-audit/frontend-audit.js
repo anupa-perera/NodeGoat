@@ -1,5 +1,6 @@
 const core = require("@actions/core");
 const fs = require("fs");
+const path = require("path");
 const { execSync, spawn } = require("child_process");
 
 /**
@@ -15,6 +16,16 @@ async function runFrontendAudit() {
     let seoScore = 0;
 
     console.log(`🎨 Running frontend usability analysis for ${framework}...`);
+
+    // Create reports directory in workspace root
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+
+    // Change to workspace root for analysis
+    process.chdir(workspaceRoot);
 
     // Install frontend audit tools
     console.log("🎨 Installing frontend audit tools...");
@@ -120,10 +131,9 @@ async function runFrontendAudit() {
           // Copy report to reports directory
           if (!fs.existsSync("reports")) {
             fs.mkdirSync("reports", { recursive: true });
-          }
-          fs.copyFileSync(
+          }          fs.copyFileSync(
             "lighthouse-report.json",
-            "reports/lighthouse-report.json"
+            path.join(reportsDir, "lighthouse-report.json")
           );
         } else {
           throw new Error("Lighthouse report not generated");
@@ -222,10 +232,8 @@ async function runFrontendAudit() {
     // Save frontend analysis report
     if (!fs.existsSync("reports")) {
       fs.mkdirSync("reports", { recursive: true });
-    }
-
-    fs.writeFileSync(
-      "reports/frontend-analysis.json",
+    }    fs.writeFileSync(
+      path.join(reportsDir, "frontend-analysis.json"),
       JSON.stringify(frontendAnalysis, null, 2)
     );
     console.log("📁 Frontend analysis saved to reports/frontend-analysis.json");

@@ -15,14 +15,17 @@ async function runSecurityScan() {
     let mediumSeverity = 0;
     let lowSeverity = 0;
     let securityIssuesSummary = "";
-    let vulnerabilityDetails = "[]";
+    let vulnerabilityDetails = "[]";    console.log(`🔒 Running security analysis for ${language}...`);
 
-    console.log(`🔒 Running security analysis for ${language}...`);
-
-    // Create reports directory
-    if (!fs.existsSync("reports")) {
-      fs.mkdirSync("reports", { recursive: true });
+    // Create reports directory in workspace root
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
     }
+
+    // Change to workspace root for scanning
+    process.chdir(workspaceRoot);
 
     // Install and run Trivy for vulnerability scanning
     await installAndRunTrivy();
@@ -55,10 +58,9 @@ async function runSecurityScan() {
         console.log("🔒 Running Trivy filesystem scan...");
         execSync("trivy fs --format json --output trivy-results.json .", {
           stdio: "pipe",
-        });
-
-        if (fs.existsSync("trivy-results.json")) {
-          fs.copyFileSync("trivy-results.json", "reports/trivy-results.json");
+        });        if (fs.existsSync("trivy-results.json")) {
+          const trivyResultsPath = path.join(reportsDir, "trivy-results.json");
+          fs.copyFileSync("trivy-results.json", trivyResultsPath);
           console.log("📁 Trivy results saved to reports/trivy-results.json");
 
           // Parse Trivy results
@@ -179,7 +181,7 @@ async function runSecurityScan() {
                 securityIssuesSummary;
             }
 
-            fs.copyFileSync("npm-audit.json", "reports/npm-audit.json");
+            fs.copyFileSync("npm-audit.json", path.join(reportsDir, "npm-audit.json"));
           }
         }
       } catch (error) {
@@ -209,11 +211,9 @@ async function runSecurityScan() {
               // Count vulnerabilities by severity (Safety doesn't provide severity levels by default)
               if (Array.isArray(safetyResults)) {
                 mediumSeverity += safetyResults.length; // Assume medium severity for Safety findings
-              }
-
-              fs.copyFileSync(
+              }              fs.copyFileSync(
                 "safety-report.json",
-                "reports/safety-report.json"
+                path.join(reportsDir, "safety-report.json")
               );
             }
           } catch (error) {
@@ -263,7 +263,7 @@ async function runSecurityScan() {
               }
             }
 
-            fs.copyFileSync("gosec-report.json", "reports/gosec-report.json");
+            fs.copyFileSync("gosec-report.json", path.join(reportsDir, "gosec-report.json"));
           }
         } catch (error) {
           console.log("⚠️ gosec completed with warnings");
@@ -312,10 +312,8 @@ async function runSecurityScan() {
       securityReport.toolsUsed.push("safety");
     } else if (language === "go" && fs.existsSync("gosec-report.json")) {
       securityReport.toolsUsed.push("gosec");
-    }
-
-    fs.writeFileSync(
-      "reports/security-summary.json",
+    }    fs.writeFileSync(
+      path.join(reportsDir, "security-summary.json"),
       JSON.stringify(securityReport, null, 2)
     );
 

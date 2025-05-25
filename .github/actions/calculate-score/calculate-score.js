@@ -6,6 +6,7 @@
  */
 
 const fs = require("fs");
+const path = require("path");
 
 // Parse inputs from environment variables
 const inputs = {
@@ -86,14 +87,14 @@ function calculateScore() {
         ai: Math.round((scores.ai * WEIGHTS.AI_WEIGHT) / 100),
       },
       calculation_timestamp: new Date().toISOString(),
-    };
-
-    // Save to file
-    if (!fs.existsSync("reports")) {
-      fs.mkdirSync("reports", { recursive: true });
+    };    // Save to file
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
     }
     fs.writeFileSync(
-      "reports/score-breakdown.json",
+      path.join(reportsDir, "score-breakdown.json"),
       JSON.stringify(breakdown, null, 2)
     );
 
