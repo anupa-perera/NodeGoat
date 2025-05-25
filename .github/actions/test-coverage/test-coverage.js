@@ -14,9 +14,17 @@ async function runTestCoverage() {
     let testFiles = 0;
     let hasTests = false;
     let missingTestAreas = "";
-    let testScore = 0;
+    let testScore = 0;    console.log(`🧪 Running test coverage analysis for ${language}...`);
 
-    console.log(`🧪 Running test coverage analysis for ${language}...`);
+    // Create reports directory in workspace root
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+
+    // Change to workspace root for analysis
+    process.chdir(workspaceRoot);
 
     switch (language.toLowerCase()) {
       case "javascript":
@@ -235,10 +243,8 @@ async function runTestCoverage() {
       hasTests: hasTests,
       language: language,
       timestamp: new Date().toISOString(),
-    };
-
-    fs.writeFileSync(
-      "reports/coverage-summary.json",
+    };    fs.writeFileSync(
+      path.join(reportsDir, "coverage-summary.json"),
       JSON.stringify(coverageSummary, null, 2)
     );
     console.log("📁 Coverage summary saved to reports/coverage-summary.json");

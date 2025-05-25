@@ -1,5 +1,6 @@
 const core = require("@actions/core");
 const fs = require("fs");
+const path = require("path");
 const { execSync } = require("child_process");
 
 /**
@@ -12,6 +13,16 @@ async function analyzeAiUsage() {
     let hasAttribution = false;
 
     console.log("🤖 Analyzing code for AI patterns...");
+
+    // Create reports directory in workspace root
+    const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+    const reportsDir = path.join(workspaceRoot, "reports");
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
+    }
+
+    // Change to workspace root for analysis
+    process.chdir(workspaceRoot);
 
     // Look for AI attribution in documentation files
     let attributionFiles = 0;
@@ -198,10 +209,8 @@ async function analyzeAiUsage() {
     // Save AI analysis report
     if (!fs.existsSync("reports")) {
       fs.mkdirSync("reports", { recursive: true });
-    }
-
-    fs.writeFileSync(
-      "reports/ai-analysis.json",
+    }    fs.writeFileSync(
+      path.join(reportsDir, "ai-analysis.json"),
       JSON.stringify(aiAnalysis, null, 2)
     );
     console.log("📁 AI analysis saved to reports/ai-analysis.json");
