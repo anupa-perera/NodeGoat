@@ -35,6 +35,7 @@ const inputs = {
   sonar_analysis_results: process.env.SONAR_ANALYSIS_RESULTS || "{}",
   reports_committed: process.env.REPORTS_COMMITTED === "true",
   report_url: process.env.REPORT_URL || "",
+  html_report_file: process.env.HTML_REPORT_FILE || "",
 };
 
 // GitHub context
@@ -257,6 +258,11 @@ async function postComment() {
       ...(inputs.reports_committed && inputs.report_url
         ? [
             `- 💾 **[Persistent Analysis Report](${inputs.report_url})** - Stored analysis results for team tracking`,
+          ]
+        : []),
+      ...(inputs.html_report_file
+        ? [
+            `- 🎨 **[Interactive HTML Dashboard](https://github.com/${owner}/${repo}/actions/runs/${run_id})** - Beautiful visual report (download from artifacts)`,
           ]
         : []),
       "",

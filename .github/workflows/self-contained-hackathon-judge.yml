@@ -238,6 +238,23 @@ jobs:
             echo "report_url=" >> $GITHUB_OUTPUT
           fi
 
+      - name: Generate HTML Report
+        id: generate_html_report
+        if: steps.commit_results.outputs.reports_committed == 'true'
+        uses: ./.github/actions/generate-html-report
+        with:
+          team_name: ${{ steps.pr_info.outputs.team_name }}
+          pr_number: ${{ steps.pr_info.outputs.pr_number }}
+          reports_dir: "reports/teams"
+
+      - name: Upload HTML Report
+        if: steps.generate_html_report.outputs.html_file
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
+          path: ${{ steps.generate_html_report.outputs.html_file }}
+          retention-days: 30
+
       - name: Post Results Comment
         if: github.event_name == 'pull_request'
         uses: ./.github/actions/post-comment
@@ -259,9 +276,10 @@ jobs:
           coverage_percentage: ${{ steps.test_analysis.outputs.coverage_percentage || '0' }}
           test_files: ${{ steps.test_analysis.outputs.test_files || '0' }}
           sonar_status: ${{ steps.sonar_analysis.outputs.quality_gate_status || 'UNKNOWN' }}
+          reports_committed: ${{ steps.commit_results.outputs.reports_committed }}
+          report_url: ${{ steps.commit_results.outputs.report_url }}
+          html_report_file: ${{ steps.generate_html_report.outputs.html_file || '' }}
           code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
           sonar_analysis_results: ${{ steps.sonar_analysis.outputs.analysis_results || '{}' }}
-          reports_committed: ${{ steps.commit_results.outputs.reports_committed || 'false' }}
-          report_url: ${{ steps.commit_results.outputs.report_url }}
