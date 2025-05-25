@@ -8,28 +8,30 @@
 const { getOctokit } = require("@actions/github");
 const core = require("@actions/core");
 
-// Parse inputs from environment variables
+// Parse inputs from environment variables with better defaults
 const inputs = {
-  overall_score: parseInt(process.env.OVERALL_SCORE),
-  test_score: parseInt(process.env.TEST_SCORE),
-  sonar_score: parseInt(process.env.SONAR_SCORE),
-  security_score: parseInt(process.env.SECURITY_SCORE),
-  frontend_score: parseInt(process.env.FRONTEND_SCORE),
-  team_score: parseInt(process.env.TEAM_SCORE),
-  ai_score: parseInt(process.env.AI_SCORE),
+  overall_score: parseInt(process.env.OVERALL_SCORE) || 0,
+  test_score: parseInt(process.env.TEST_SCORE) || 0,
+  sonar_score: isNaN(parseInt(process.env.SONAR_SCORE))
+    ? 0
+    : parseInt(process.env.SONAR_SCORE),
+  security_score: parseInt(process.env.SECURITY_SCORE) || 0,
+  frontend_score: parseInt(process.env.FRONTEND_SCORE) || 0,
+  team_score: parseInt(process.env.TEAM_SCORE) || 0,
+  ai_score: parseInt(process.env.AI_SCORE) || 0,
   high_severity: parseInt(process.env.HIGH_SEVERITY || "0"),
   medium_severity: parseInt(process.env.MEDIUM_SEVERITY || "0"),
   low_severity: parseInt(process.env.LOW_SEVERITY || "0"),
   coverage_percentage: parseFloat(process.env.COVERAGE_PERCENTAGE || "0"),
   test_files: parseInt(process.env.TEST_FILES || "0"),
-  sonar_status: process.env.SONAR_STATUS,
+  sonar_status: process.env.SONAR_STATUS || "UNKNOWN",
   code_smells: parseInt(process.env.CODE_SMELLS || "0"),
   bugs: parseInt(process.env.BUGS || "0"),
   vulnerabilities: parseInt(process.env.VULNERABILITIES || "0"),
-  team_name: process.env.TEAM_NAME,
-  detected_stack: process.env.DETECTED_STACK,
-  sonar_url: process.env.SONAR_URL,
-  pr_number: parseInt(process.env.PR_NUMBER),
+  team_name: process.env.TEAM_NAME || "Unknown Team",
+  detected_stack: process.env.DETECTED_STACK || "Not detected",
+  sonar_url: process.env.SONAR_URL || "#",
+  pr_number: parseInt(process.env.PR_NUMBER) || 0,
   sonar_analysis_results: process.env.SONAR_ANALYSIS_RESULTS || "{}",
 };
 
@@ -58,21 +60,15 @@ function formatDetailedSonarIssues(sonarResults) {
 
   let formattedIssues = "";
   const { bugs, vulnerabilities, code_smells } = sonarResults.detailed_issues;
-
   // Format bugs
   if (
     bugs &&
     bugs.trim() &&
     bugs !== "Too many issues - check SonarCloud report"
   ) {
-    formattedIssues += "\n**🐛 Bugs Found:**\n" + bugs + "\n";
+    formattedIssues += "\n### 🐛 Bugs Found\n\n" + bugs + "\n";
   } else if (sonarResults.summary && parseInt(sonarResults.summary.bugs) > 0) {
-    formattedIssues +=
-      "\n**🐛 Bugs Found:** " +
-      sonarResults.summary.bugs +
-      " bugs detected. Check the [SonarCloud report](" +
-      inputs.sonar_url +
-      ") for details.\n";
+    formattedIssues += `\n### 🐛 Bugs Found\n**${sonarResults.summary.bugs}** bugs detected. Check the [SonarCloud report](${inputs.sonar_url}) for details.\n`;
   }
 
   // Format vulnerabilities
@@ -82,17 +78,12 @@ function formatDetailedSonarIssues(sonarResults) {
     vulnerabilities !== "Too many issues - check SonarCloud report"
   ) {
     formattedIssues +=
-      "\n**🔒 Security Vulnerabilities:**\n" + vulnerabilities + "\n";
+      "\n### 🔒 Security Vulnerabilities\n\n" + vulnerabilities + "\n";
   } else if (
     sonarResults.summary &&
     parseInt(sonarResults.summary.vulnerabilities) > 0
   ) {
-    formattedIssues +=
-      "\n**🔒 Security Vulnerabilities:** " +
-      sonarResults.summary.vulnerabilities +
-      " vulnerabilities detected. Check the [SonarCloud report](" +
-      inputs.sonar_url +
-      ") for details.\n";
+    formattedIssues += `\n### 🔒 Security Vulnerabilities\n**${sonarResults.summary.vulnerabilities}** vulnerabilities detected. Check the [SonarCloud report](${inputs.sonar_url}) for details.\n`;
   }
 
   // Format code smells
@@ -104,24 +95,20 @@ function formatDetailedSonarIssues(sonarResults) {
     const smellsArray = code_smells.split("---").filter((s) => s.trim());
     const limitedSmells = smellsArray.slice(0, 5).join("---");
     formattedIssues +=
-      "\n**👃 Code Smells (showing first 5):**\n" + limitedSmells;
+      "\n### 👃 Code Smells (showing first 5)\n\n" + limitedSmells;
     if (smellsArray.length > 5) {
       formattedIssues += `\n\n*... and ${
         smellsArray.length - 5
-      } more code smells. Check the [SonarCloud report](${
+      } more code smell issues. Check the [SonarCloud report](${
         inputs.sonar_url
       }) for complete details.*\n`;
     }
+    formattedIssues += "\n";
   } else if (
     sonarResults.summary &&
     parseInt(sonarResults.summary.code_smells) > 0
   ) {
-    formattedIssues +=
-      "\n**👃 Code Smells:** " +
-      sonarResults.summary.code_smells +
-      " code smells detected. Check the [SonarCloud report](" +
-      inputs.sonar_url +
-      ") for details.\n";
+    formattedIssues += `\n### 👃 Code Smells\n**${sonarResults.summary.code_smells}** code smells detected. Check the [SonarCloud report](${inputs.sonar_url}) for details.\n`;
   }
 
   return formattedIssues;
@@ -152,6 +139,16 @@ function getStatusEmoji(score) {
 
 async function postComment() {
   try {
+    // Debug: Log received inputs
+    console.log("📊 Received inputs:");
+    console.log(`  Team Name: ${inputs.team_name}`);
+    console.log(`  Technology Stack: ${inputs.detected_stack}`);
+    console.log(`  Overall Score: ${inputs.overall_score}`);
+    console.log(`  Sonar Score: ${inputs.sonar_score}`);
+    console.log(`  Sonar Status: ${inputs.sonar_status}`);
+    console.log(`  PR Number: ${inputs.pr_number}`);
+    console.log("");
+
     console.log("Parsing detailed SonarCloud analysis results...");
 
     // Parse detailed SonarCloud analysis results
@@ -197,79 +194,44 @@ async function postComment() {
 
     const total_vulnerabilities =
       inputs.high_severity + inputs.medium_severity + inputs.low_severity;
-
     const comment = [
-      "## 🏆 Hackathon Analysis Results",
+      "# 🏆 Hackathon Code Analysis Results",
       "",
-      "**Team:** " + inputs.team_name,
-      "**Technology Stack:** " + inputs.detected_stack,
-      "**Overall Score:** " +
-        getGradeEmoji(inputs.overall_score) +
-        " **" +
-        inputs.overall_score +
-        "/100**",
+      `**👥 Team:** ${inputs.team_name}`,
+      `**🛠️ Technology Stack:** ${inputs.detected_stack}`,
+      `**📊 Overall Score:** ${getGradeEmoji(inputs.overall_score)} **${
+        inputs.overall_score
+      }/100**`,
       "",
-      "### 📊 Detailed Breakdown",
+      "## 📈 Detailed Score Breakdown",
       "",
       "| Category | Score | Progress | Weight |",
       "|----------|-------|----------|---------|",
-      "| " +
-        getStatusEmoji(inputs.test_score) +
-        " **Tests & Coverage** | " +
-        inputs.test_score +
-        "/100 | `" +
-        createProgressBar(inputs.test_score) +
-        "` | 25% |",
-      "| " +
-        getStatusEmoji(inputs.sonar_score) +
-        " **Code Quality** | " +
-        inputs.sonar_score +
-        "/100 | `" +
-        createProgressBar(inputs.sonar_score) +
-        "` | 30% |",
-      "| " +
-        getStatusEmoji(inputs.security_score) +
-        " **Security** | " +
-        inputs.security_score +
-        "/100 | `" +
-        createProgressBar(inputs.security_score) +
-        "` | 20% |",
-      "| " +
-        getStatusEmoji(inputs.frontend_score) +
-        " **Frontend UX** | " +
-        inputs.frontend_score +
-        "/100 | `" +
-        createProgressBar(inputs.frontend_score) +
-        "` | 10% |",
-      "| " +
-        getStatusEmoji(inputs.team_score) +
-        " **Team Collaboration** | " +
-        inputs.team_score +
-        "/100 | `" +
-        createProgressBar(inputs.team_score) +
-        "` | 10% |",
-      "| " +
-        getStatusEmoji(inputs.ai_score) +
-        " **AI Attribution** | " +
-        inputs.ai_score +
-        "/100 | `" +
-        createProgressBar(inputs.ai_score) +
-        "` | 5% |",
+      `| ${getStatusEmoji(inputs.test_score)} **Tests & Coverage** | ${
+        inputs.test_score
+      }/100 | \`${createProgressBar(inputs.test_score)}\` | 25% |`,
+      `| ${getStatusEmoji(inputs.sonar_score)} **Code Quality** | ${
+        inputs.sonar_score
+      }/100 | \`${createProgressBar(inputs.sonar_score)}\` | 30% |`,
+      `| ${getStatusEmoji(inputs.security_score)} **Security** | ${
+        inputs.security_score
+      }/100 | \`${createProgressBar(inputs.security_score)}\` | 20% |`,
+      `| ${getStatusEmoji(inputs.frontend_score)} **Frontend UX** | ${
+        inputs.frontend_score
+      }/100 | \`${createProgressBar(inputs.frontend_score)}\` | 10% |`,
+      `| ${getStatusEmoji(inputs.team_score)} **Team Collaboration** | ${
+        inputs.team_score
+      }/100 | \`${createProgressBar(inputs.team_score)}\` | 10% |`,
+      `| ${getStatusEmoji(inputs.ai_score)} **AI Attribution** | ${
+        inputs.ai_score
+      }/100 | \`${createProgressBar(inputs.ai_score)}\` | 5% |`,
       "",
-      "### 🔍 Analysis Links",
-      "- 🔗 **[SonarCloud Report](" +
-        inputs.sonar_url +
-        ")** - Detailed code quality analysis",
-      "- 📊 **[Full Analysis Logs](https://github.com/" +
-        owner +
-        "/" +
-        repo +
-        "/actions/runs/" +
-        run_id +
-        ")** - Complete CI results",
+      "## 🔗 Quick Links",
+      `- 📊 **[SonarCloud Report](${inputs.sonar_url})** - Detailed code quality analysis`,
+      `- 🔍 **[Full Analysis Logs](https://github.com/${owner}/${repo}/actions/runs/${run_id})** - Complete CI results`,
       "",
-      "### 🔧 Code Quality Analysis",
-    ];
+    ]; // Add code quality analysis section
+    comment.push("## 🔧 Code Quality Analysis");
 
     // Show detailed SonarCloud issues if available
     const detailedIssuesText = formatDetailedSonarIssues(detailedSonarResults);
@@ -280,52 +242,36 @@ async function postComment() {
       if (inputs.sonar_status !== "UNKNOWN") {
         const gateStatus =
           inputs.sonar_status === "FAILED" ? "❌ FAILED" : "✅ PASSED";
-        comment.push("**Quality Gate:** " + gateStatus);
+        comment.push(`**🚦 Quality Gate:** ${gateStatus}`);
         comment.push(
-          "**Issues Found:** " +
-            inputs.bugs +
-            " Bugs | " +
-            inputs.code_smells +
-            " Code Smells | " +
-            inputs.vulnerabilities +
-            " Vulnerabilities"
+          `**📋 Issues Summary:** ${inputs.bugs} Bugs | ${inputs.code_smells} Code Smells | ${inputs.vulnerabilities} Vulnerabilities`
         );
       } else {
-        comment.push("⏳ **SonarCloud analysis pending or unavailable.**");
+        comment.push("⏳ **SonarCloud analysis is pending or unavailable.**");
       }
-      comment.push(
-        "*📝 Detailed SonarCloud analysis results were not available.*"
-      );
       comment.push("");
     }
-
-    comment.push("### 🎯 Priority Action Items");
+    comment.push("## 🎯 Priority Action Items");
     comment.push("");
+
+    const actionItems = [];
 
     // Generate action items based on findings
     if (total_vulnerabilities > 0) {
-      comment.push(
-        "**🔒 Security:** Fix " +
-          total_vulnerabilities +
-          " vulnerabilities (" +
-          inputs.high_severity +
-          " high, " +
-          inputs.medium_severity +
-          " medium, " +
-          inputs.low_severity +
-          " low)"
+      actionItems.push(
+        `**🔒 Security:** Fix ${total_vulnerabilities} vulnerabilities (${inputs.high_severity} high, ${inputs.medium_severity} medium, ${inputs.low_severity} low)`
       );
     }
 
     if (inputs.test_files === 0) {
-      comment.push(
+      actionItems.push(
         "**🧪 Testing:** Create test files and achieve basic test coverage"
       );
     } else if (inputs.coverage_percentage < 80) {
-      comment.push(
-        "**🧪 Testing:** Increase coverage from " +
-          inputs.coverage_percentage.toFixed(1) +
-          "% to 80%+"
+      actionItems.push(
+        `**🧪 Testing:** Increase coverage from ${inputs.coverage_percentage.toFixed(
+          1
+        )}% to 80%+`
       );
     }
 
@@ -334,29 +280,52 @@ async function postComment() {
       inputs.code_smells > 5 ||
       inputs.sonar_status === "FAILED"
     ) {
-      comment.push(
-        "**🔧 Code Quality:** Address " +
-          inputs.bugs +
-          " bugs and " +
-          inputs.code_smells +
-          " code smells"
+      actionItems.push(
+        `**🔧 Code Quality:** Address ${inputs.bugs} bugs and ${inputs.code_smells} code smells`
       );
     }
 
-    if (inputs.overall_score >= 85) {
-      comment.push("🏆 **Excellent work!** Your code meets high standards.");
+    if (inputs.frontend_score < 70) {
+      actionItems.push(
+        "**🎨 Frontend:** Improve user experience and UI/UX design"
+      );
     }
 
+    if (inputs.team_score < 70) {
+      actionItems.push(
+        "**👥 Collaboration:** Improve commit practices and team coordination"
+      );
+    }
+
+    if (actionItems.length === 0) {
+      if (inputs.overall_score >= 85) {
+        comment.push("🏆 **Excellent work!** Your code meets high standards.");
+      } else {
+        comment.push(
+          "📝 **Good progress!** Continue improving your code quality."
+        );
+      }
+    } else {
+      actionItems.forEach((item) => comment.push(`- ${item}`));
+    }
     comment.push("");
     comment.push("---");
     comment.push("");
+
+    // Add helpful footer
+    const currentDate = new Date().toISOString().split("T")[0];
+    comment.push(`<div align="center">`);
+    comment.push("");
+    comment.push(`**🤖 Automated Analysis Report**`);
     comment.push(
-      "*🤖 Analysis completed on " +
-        new Date().toISOString().split("T")[0] +
-        " | PR #" +
-        inputs.pr_number +
-        " | Powered by GitHub Actions*"
+      `📅 Generated on ${currentDate} | 🔄 PR #${inputs.pr_number} | ⚡ Powered by GitHub Actions`
     );
+    comment.push("");
+    comment.push(
+      `*Need help improving your score? Check the [analysis links](#-quick-links) above for detailed reports.*`
+    );
+    comment.push("");
+    comment.push(`</div>`);
 
     const finalComment = comment.join("\n");
 
