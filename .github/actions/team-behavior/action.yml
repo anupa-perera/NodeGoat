@@ -19,62 +19,13 @@ runs:
   using: "composite"
   steps:
     - name: 👥 Team Collaboration Analysis
+      id: analysis
       shell: bash
       run: |
-        behavior_score=0
-        total_commits=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-        total_authors=$(git log --format='%an' | sort -u | wc -l 2>/dev/null || echo "1")
-        message_quality=0
+        cd ${{ github.action_path }}
 
-        echo "👥 Analyzing team collaboration patterns..."
+        # Install required dependencies
+        npm install --silent @actions/core
 
-        # Commit activity scoring (0-40 points)
-        if [ $total_commits -gt 30 ]; then
-          commit_score=40
-        elif [ $total_commits -gt 15 ]; then
-          commit_score=30
-        elif [ $total_commits -gt 5 ]; then
-          commit_score=20
-        elif [ $total_commits -gt 0 ]; then
-          commit_score=10
-        else
-          commit_score=0
-        fi
-
-        # Author diversity scoring (0-30 points)
-        if [ $total_authors -gt 4 ]; then
-          author_score=30
-        elif [ $total_authors -gt 2 ]; then
-          author_score=25
-        elif [ $total_authors -gt 1 ]; then
-          author_score=15
-        else
-          author_score=5
-        fi
-
-        # Commit message quality (0-30 points)
-        if [ $total_commits -gt 0 ]; then
-          good_messages=$(git log --oneline | grep -E "(feat|fix|docs|style|refactor|test|chore):" | wc -l 2>/dev/null || echo "0")
-          if [ $total_commits -gt 0 ]; then
-            message_quality=$((good_messages * 100 / total_commits))
-            message_score=$((message_quality * 30 / 100))
-          else
-            message_score=0
-          fi
-        else
-          message_score=0
-        fi
-
-        behavior_score=$((commit_score + author_score + message_score))
-
-        # Cap at 100
-        if [ $behavior_score -gt 100 ]; then
-          behavior_score=100
-        fi
-
-        echo "behavior_score=$behavior_score" >> $GITHUB_OUTPUT
-        echo "total_commits=$total_commits" >> $GITHUB_OUTPUT
-        echo "total_authors=$total_authors" >> $GITHUB_OUTPUT
-        echo "message_quality=$message_quality" >> $GITHUB_OUTPUT
-
-        echo "✅ Team analysis complete - Score: $behavior_score/100 | Commits: $total_commits | Authors: $total_authors | Message Quality: $message_quality%"
+        # Run the team behavior analysis script
+        node team-behavior.js

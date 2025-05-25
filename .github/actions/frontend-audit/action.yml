@@ -24,75 +24,15 @@ runs:
   using: "composite"
   steps:
     - name: 🎨 Frontend Usability Analysis
+      id: audit
       shell: bash
+      env:
+        FRAMEWORK: ${{ inputs.framework }}
       run: |
-        usability_score=0
-        performance_score=0
-        accessibility_score=0
-        seo_score=0
+        cd ${{ github.action_path }}
 
-        echo "🎨 Installing frontend audit tools..."
-        npm install -g http-server @lhci/cli lighthouse 2>/dev/null || true
+        # Install required dependencies
+        npm install --silent @actions/core
 
-        # Build frontend if possible
-        if [ -f "package.json" ]; then
-          npm run build 2>/dev/null || npm run build:prod 2>/dev/null || npm run dist 2>/dev/null || true
-        fi
-
-        # Determine what to serve
-        if [ -d "dist" ]; then
-          serve_dir="dist"
-        elif [ -d "build" ]; then
-          serve_dir="build"
-        elif [ -d "public" ]; then
-          serve_dir="public"
-        else
-          serve_dir="."
-        fi
-
-        echo "🎨 Starting local server for $serve_dir..."
-        http-server $serve_dir -p 8080 &
-        SERVER_PID=$!
-        sleep 5
-
-        # Run Lighthouse audit
-        echo "🎨 Running Lighthouse audit..."
-        lighthouse http://localhost:8080 \
-          --output json \
-          --output-path lighthouse-report.json \
-          --chrome-flags="--headless --no-sandbox --disable-gpu" \
-          2>/dev/null || true
-
-        # Kill server
-        kill $SERVER_PID 2>/dev/null || true
-
-        # Parse Lighthouse results
-        if [ -f "lighthouse-report.json" ]; then
-          performance_score=$(jq '.categories.performance.score * 100' lighthouse-report.json 2>/dev/null || echo "0")
-          accessibility_score=$(jq '.categories.accessibility.score * 100' lighthouse-report.json 2>/dev/null || echo "0")
-          seo_score=$(jq '.categories.seo.score * 100' lighthouse-report.json 2>/dev/null || echo "0")
-          
-          # Calculate overall usability score
-          usability_score=$(echo "scale=0; ($performance_score + $accessibility_score + $seo_score) / 3" | bc 2>/dev/null || echo "0")
-        else
-          echo "⚠️ Lighthouse audit failed, using basic scoring"
-          # Basic scoring based on framework detection
-          case "${{ inputs.framework }}" in
-            "react"|"vue"|"angular"|"nextjs")
-              usability_score=70
-              ;;
-            "html")
-              usability_score=50
-              ;;
-            *)
-              usability_score=30
-              ;;
-          esac
-        fi
-
-        echo "usability_score=$usability_score" >> $GITHUB_OUTPUT
-        echo "lighthouse_performance=${performance_score%.*}" >> $GITHUB_OUTPUT
-        echo "lighthouse_accessibility=${accessibility_score%.*}" >> $GITHUB_OUTPUT
-        echo "lighthouse_seo=${seo_score%.*}" >> $GITHUB_OUTPUT
-
-        echo "✅ Frontend audit complete - Score: $usability_score/100 | Performance: ${performance_score%.*} | A11y: ${accessibility_score%.*} | SEO: ${seo_score%.*}"
+        # Run the frontend audit script
+        node frontend-audit.js
