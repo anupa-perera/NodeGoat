@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "behaviorScore": 72,
+    "totalCommits": 556,
+    "totalAuthors": 44,
+    "messageQuality": 8
+  },
+  "scoring": {
+    "commitActivityScore": 40,
+    "authorDiversityScore": 30,
+    "messageQualityScore": 2
+  },
+  "breakdown": {
+    "commitActivity": {
+      "score": 40,
+      "maxScore": 40,
+      "description": "Excellent commit activity"
+    },
+    "authorDiversity": {
+      "score": 30,
+      "maxScore": 30,
+      "description": "Excellent team collaboration"
+    },
+    "messageQuality": {
+      "score": 2,
+      "maxScore": 30,
+      "percentage": 8,
+      "description": "Very poor message quality"
+    }
+  },
+  "timestamp": "2025-05-25T17:39:47.027Z"
+}
