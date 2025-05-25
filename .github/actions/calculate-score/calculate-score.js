@@ -87,7 +87,7 @@ function calculateScore() {
         ai: Math.round((scores.ai * WEIGHTS.AI_WEIGHT) / 100),
       },
       calculation_timestamp: new Date().toISOString(),
-    };    // Save to file
+    }; // Save to file
     const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
     const reportsDir = path.join(workspaceRoot, "reports");
     if (!fs.existsSync(reportsDir)) {
