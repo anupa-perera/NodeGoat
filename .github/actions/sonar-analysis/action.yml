@@ -1,5 +1,5 @@
 name: SonarCloud Analysis
-description: Run SonarCloud code quality analysis
+description: Run SonarCloud code quality analysis and fetch detailed issues
 
 inputs:
   project_key:
@@ -9,143 +9,132 @@ inputs:
     description: "SonarCloud organization"
     required: true
   language:
-    description: "Programming language"
+    description: "Project programming language"
     required: true
+    default: "javascript"
   sonar_token:
     description: "SonarCloud token"
     required: true
-  github_token:
-    description: "GitHub token"
-    required: true
 
 outputs:
-  sonar_score:
-    description: "SonarCloud quality score"
-    value: ${{ steps.sonar-results.outputs.sonar_score }}
-  sonar_status:
-    description: "Quality gate status"
-    value: ${{ steps.sonar-results.outputs.sonar_status }}
-  sonar_url:
-    description: "SonarCloud project URL"
-    value: ${{ steps.sonar-results.outputs.sonar_url }}
-  code_smells:
-    description: "Number of code smells"
-    value: ${{ steps.sonar-results.outputs.code_smells }}
-  bugs:
-    description: "Number of bugs"
-    value: ${{ steps.sonar-results.outputs.bugs }}
-  vulnerabilities:
-    description: "Number of security vulnerabilities"
-    value: ${{ steps.sonar-results.outputs.vulnerabilities }}
-  quality_issues:
-    description: "Summary of quality issues"
-    value: ${{ steps.sonar-results.outputs.quality_issues }}
+  analysis_results:
+    description: "SonarCloud analysis results with detailed issues"
+    value: ${{ steps.sonar-analysis.outputs.analysis_results }}
 
 runs:
-  using: composite
+  using: "composite"
   steps:
-    - name: 🔧 Generate SonarCloud Configuration
-      shell: bash
-      run: |
-        cat > sonar-project.properties << EOF
-        sonar.projectKey=${{ inputs.project_key }}
-        sonar.organization=${{ inputs.organization }}
-        sonar.sources=.
-        sonar.scm.provider=git
-        sonar.branch.name=${GITHUB_REF_NAME}
-        sonar.branch.target=${GITHUB_BASE_REF:-main}
-        sonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/*.min.js,**/vendor/**,**/.git/**,**/.github/**,**/test/**,**/tests/**,**/__tests__/**
-        EOF
-
-        # Language-specific properties
-        case "${{ inputs.language }}" in
-          "javascript")
-            echo "sonar.javascript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
-            ;;
-          "python")
-            echo "sonar.python.coverage.reportPaths=coverage.xml" >> sonar-project.properties
-            ;;
-        esac
-
-        echo "✅ SonarCloud configuration created"
-
-    - name: 📥 Setup SonarCloud Scanner
-      shell: bash
-      run: |
-        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-        unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
-        mv sonar-scanner-5.0.1.3006-linux sonar-scanner
-        echo "$(pwd)/sonar-scanner/bin" >> $GITHUB_PATH
-        echo "✅ SonarCloud scanner ready"
-
-    - name: 🔍 Run SonarCloud Analysis
-      shell: bash
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_TOKEN: ${{ github.token }}
         SONAR_TOKEN: ${{ inputs.sonar_token }}
-        GITHUB_REF_NAME: ${{ github.ref_name }}
-        GITHUB_BASE_REF: ${{ github.base_ref }}
-      run: |
-        # Set Java path explicitly
-        export JAVA_HOME=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.15-6/x64
-        export PATH=$JAVA_HOME/bin:$PATH
 
-        # Verify environment
-        java -version
-        echo "✅ Running SonarCloud analysis..."
-
-        ./sonar-scanner/bin/sonar-scanner \
-          -Dsonar.projectKey=${{ inputs.project_key }} \
-          -Dsonar.organization=${{ inputs.organization }} \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.token=${{ inputs.sonar_token }} \
-          -Dsonar.branch.name=${GITHUB_REF_NAME} \
-          -Dsonar.branch.target=${GITHUB_BASE_REF:-main}
-
-    - name: ⏳ Fetch SonarCloud Results
-      id: sonar-results
+    - name: Wait for analysis completion
       shell: bash
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar_token }}
       run: |
-        echo "⏳ Waiting for SonarCloud analysis to complete..."
+        echo "Waiting for SonarCloud analysis to complete..."
         sleep 30
 
-        sonar_score=50
-        sonar_status="ERROR"
-        sonar_url="https://sonarcloud.io/project/overview?id=${{ inputs.project_key }}"
+    - name: Fetch detailed SonarCloud issues
+      id: sonar-analysis
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+        PROJECT_KEY: ${{ inputs.project_key }}
+        ORGANIZATION: ${{ inputs.organization }}
+      run: |
+        echo "Fetching SonarCloud analysis results..."
 
-        # Try to fetch results from SonarCloud API
-        if [ -n "${{ inputs.sonar_token }}" ]; then
-          # Fetch quality gate status
-          status_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
-            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${{ inputs.project_key }}" || echo '{"projectStatus":{"status":"ERROR"}}')
-          
-          sonar_status=$(echo "$status_response" | jq -r '.projectStatus.status // "ERROR"')
-          
-          # Fetch measures for scoring
-          measures_response=$(curl -s -u "${{ inputs.sonar_token }}:" \
-            "https://sonarcloud.io/api/measures/component?component=${{ inputs.project_key }}&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc,complexity" || echo '{"component":{"measures":[]}}')
-          
-          echo "$measures_response" > sonar-measures.json
-          
-          # Ensure reports directory exists and copy results
-          mkdir -p reports
-          cp sonar-measures.json reports/
-          echo "📁 SonarCloud measures saved to reports/sonar-measures.json"
-          
-          # Calculate score based on measures
-          if [ "$sonar_status" = "OK" ]; then
-            sonar_score=85
-          elif [ "$sonar_status" = "WARN" ]; then
-            sonar_score=70
-          else
-            sonar_score=50
-          fi
+        # Fetch basic metrics
+        metrics_response=$(curl -s -u "$SONAR_TOKEN:" \
+          "https://sonarcloud.io/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc,sqale_rating,reliability_rating,security_rating")
+
+        # Fetch detailed issues - bugs
+        bugs_response=$(curl -s -u "$SONAR_TOKEN:" \
+          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=BUG&ps=500")
+
+        # Fetch detailed issues - vulnerabilities
+        vulnerabilities_response=$(curl -s -u "$SONAR_TOKEN:" \
+          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=VULNERABILITY&ps=500")
+
+        # Fetch detailed issues - code smells
+        code_smells_response=$(curl -s -u "$SONAR_TOKEN:" \
+          "https://sonarcloud.io/api/issues/search?componentKeys=$PROJECT_KEY&types=CODE_SMELL&ps=500")
+
+        # Parse metrics using jq
+        bugs_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="bugs") | .value // "0"')
+        vulnerabilities_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="vulnerabilities") | .value // "0"')
+        code_smells_count=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="code_smells") | .value // "0"')
+        coverage=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="coverage") | .value // "0"')
+        duplicated_lines=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="duplicated_lines_density") | .value // "0"')
+        lines_of_code=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="ncloc") | .value // "0"')
+        maintainability_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="sqale_rating") | .value // "1"')
+        reliability_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="reliability_rating") | .value // "1"')
+        security_rating=$(echo "$metrics_response" | jq -r '.component.measures[] | select(.metric=="security_rating") | .value // "1"')
+
+        # Process detailed issues
+        process_issues() {
+          local response="$1"
+          local issue_type="$2"
+          echo "$response" | jq -r --arg type "$issue_type" '
+            .issues[] | 
+            "- **\($type)**: \(.message)
+              - **File**: \(.component | sub(".*:"; ""))
+              - **Line**: \(.line // "N/A")
+              - **Severity**: \(.severity)
+              - **Rule**: \(.rule)
+              ---"
+          ' 2>/dev/null || echo ""
+        }
+
+        # Generate detailed issues output
+        detailed_bugs=""
+        detailed_vulnerabilities=""
+        detailed_code_smells=""
+
+        if [ "$bugs_count" != "0" ]; then
+          detailed_bugs=$(process_issues "$bugs_response" "Bug")
         fi
 
-        echo "sonar_score=$sonar_score" >> $GITHUB_OUTPUT
-        echo "sonar_status=$sonar_status" >> $GITHUB_OUTPUT
-        echo "sonar_url=$sonar_url" >> $GITHUB_OUTPUT
+        if [ "$vulnerabilities_count" != "0" ]; then
+          detailed_vulnerabilities=$(process_issues "$vulnerabilities_response" "Vulnerability")
+        fi
 
-        echo "✅ SonarCloud analysis complete - Score: $sonar_score/100 | Status: $sonar_status"
+        if [ "$code_smells_count" != "0" ]; then
+          detailed_code_smells=$(process_issues "$code_smells_response" "Code Smell")
+        fi
+
+        # Create comprehensive analysis results
+        analysis_results=$(cat << EOF
+        {
+          "summary": {
+            "bugs": "$bugs_count",
+            "vulnerabilities": "$vulnerabilities_count",
+            "code_smells": "$code_smells_count",
+            "coverage": "$coverage",
+            "duplicated_lines": "$duplicated_lines",
+            "lines_of_code": "$lines_of_code",
+            "maintainability_rating": "$maintainability_rating",
+            "reliability_rating": "$reliability_rating",
+            "security_rating": "$security_rating"
+          },
+          "detailed_issues": {
+            "bugs": $(echo "$detailed_bugs" | jq -Rs .),
+            "vulnerabilities": $(echo "$detailed_vulnerabilities" | jq -Rs .),
+            "code_smells": $(echo "$detailed_code_smells" | jq -Rs .)
+          }
+        }
+        EOF
+        )
+
+        # Escape the JSON for GitHub Actions output
+        analysis_results_escaped=$(echo "$analysis_results" | jq -c .)
+
+        echo "analysis_results=$analysis_results_escaped" >> $GITHUB_OUTPUT
+
+        echo "SonarCloud analysis completed successfully!"
+        echo "Bugs: $bugs_count"
+        echo "Vulnerabilities: $vulnerabilities_count"
+        echo "Code Smells: $code_smells_count"
+        echo "Coverage: $coverage%"
