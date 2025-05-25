@@ -158,9 +158,8 @@ async function analyzeTeamBehavior() {
     }
 
     // Save team analysis report
-    const fs = require("fs");
-    if (!fs.existsSync("reports")) {
-      fs.mkdirSync("reports", { recursive: true });
+    if (!fs.existsSync(reportsDir)) {
+      fs.mkdirSync(reportsDir, { recursive: true });
     }
     fs.writeFileSync(
       path.join(reportsDir, "team-analysis.json"),
