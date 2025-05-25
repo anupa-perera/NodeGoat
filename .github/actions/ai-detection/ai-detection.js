@@ -209,7 +209,8 @@ async function analyzeAiUsage() {
     // Save AI analysis report
     if (!fs.existsSync("reports")) {
       fs.mkdirSync("reports", { recursive: true });
-    }    fs.writeFileSync(
+    }
+    fs.writeFileSync(
       path.join(reportsDir, "ai-analysis.json"),
       JSON.stringify(aiAnalysis, null, 2)
     );

@@ -131,7 +131,8 @@ async function runFrontendAudit() {
           // Copy report to reports directory
           if (!fs.existsSync("reports")) {
             fs.mkdirSync("reports", { recursive: true });
-          }          fs.copyFileSync(
+          }
+          fs.copyFileSync(
             "lighthouse-report.json",
             path.join(reportsDir, "lighthouse-report.json")
           );
@@ -232,7 +233,8 @@ async function runFrontendAudit() {
     // Save frontend analysis report
     if (!fs.existsSync("reports")) {
       fs.mkdirSync("reports", { recursive: true });
-    }    fs.writeFileSync(
+    }
+    fs.writeFileSync(
       path.join(reportsDir, "frontend-analysis.json"),
       JSON.stringify(frontendAnalysis, null, 2)
     );

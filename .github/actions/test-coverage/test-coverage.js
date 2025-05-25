@@ -14,7 +14,8 @@ async function runTestCoverage() {
     let testFiles = 0;
     let hasTests = false;
     let missingTestAreas = "";
-    let testScore = 0;    console.log(`🧪 Running test coverage analysis for ${language}...`);
+    let testScore = 0;
+    console.log(`🧪 Running test coverage analysis for ${language}...`);
 
     // Create reports directory in workspace root
     const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
@@ -243,7 +244,8 @@ async function runTestCoverage() {
       hasTests: hasTests,
       language: language,
       timestamp: new Date().toISOString(),
-    };    fs.writeFileSync(
+    };
+    fs.writeFileSync(
       path.join(reportsDir, "coverage-summary.json"),
       JSON.stringify(coverageSummary, null, 2)
     );
