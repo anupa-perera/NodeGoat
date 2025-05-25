@@ -109,20 +109,34 @@ runs:
           const code_smells = parseInt('${{ inputs.code_smells }}');
           const bugs = parseInt('${{ inputs.bugs }}');
           const vulnerabilities = parseInt('${{ inputs.vulnerabilities }}');
-          const total_vulnerabilities = high_severity + medium_severity + low_severity;
-
-          // Parse detailed SonarCloud analysis results
+          const total_vulnerabilities = high_severity + medium_severity + low_severity;          // Parse detailed SonarCloud analysis results
           let detailedSonarResults = {};
           try {
-            const sonarResultsInput = '${{ inputs.sonar_analysis_results }}';
-            if (sonarResultsInput && sonarResultsInput !== '{}') {
-              detailedSonarResults = JSON.parse(sonarResultsInput);
+            const sonarResultsInput = `${{ inputs.sonar_analysis_results }}`;
+            console.log('Raw SonarCloud input length:', sonarResultsInput.length);
+            console.log('Raw SonarCloud input (first 500 chars):', sonarResultsInput.substring(0, 500));
+            
+            if (sonarResultsInput && sonarResultsInput !== '{}' && sonarResultsInput.length > 2) {
+              // Check if JSON appears to be truncated
+              if (!sonarResultsInput.trim().endsWith('}') && !sonarResultsInput.trim().endsWith(']')) {
+                console.log('Warning: SonarCloud results appear to be truncated');
+                // Try to parse partial JSON by adding closing braces
+                const truncatedInput = sonarResultsInput.trim() + '}}}}';
+                try {
+                  detailedSonarResults = JSON.parse(truncatedInput);
+                  console.log('Successfully parsed truncated JSON');
+                } catch (truncatedError) {
+                  console.log('Could not parse even with added closing braces:', truncatedError.message);
+                }
+              } else {
+                detailedSonarResults = JSON.parse(sonarResultsInput);
+                console.log('Successfully parsed complete JSON');
+              }
             }
           } catch (error) {
             console.log('Could not parse detailed SonarCloud results:', error.message);
-          }
-
-          // Function to format detailed SonarCloud issues
+            console.log('Input that caused error:', `${{ inputs.sonar_analysis_results }}`.substring(0, 200));
+          }          // Function to format detailed SonarCloud issues
           function formatDetailedSonarIssues(sonarResults) {
             if (!sonarResults || !sonarResults.detailed_issues) {
               return '';
@@ -132,23 +146,29 @@ runs:
             const { bugs, vulnerabilities, code_smells } = sonarResults.detailed_issues;
             
             // Format bugs
-            if (bugs && bugs.trim()) {
+            if (bugs && bugs.trim() && bugs !== 'Too many issues - check SonarCloud report') {
               formattedIssues += '\n**🐛 Bugs Found:**\n' + bugs + '\n';
+            } else if (sonarResults.summary && parseInt(sonarResults.summary.bugs) > 0) {
+              formattedIssues += '\n**🐛 Bugs Found:** ' + sonarResults.summary.bugs + ' bugs detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
             }
             
             // Format vulnerabilities
-            if (vulnerabilities && vulnerabilities.trim()) {
+            if (vulnerabilities && vulnerabilities.trim() && vulnerabilities !== 'Too many issues - check SonarCloud report') {
               formattedIssues += '\n**🔒 Security Vulnerabilities:**\n' + vulnerabilities + '\n';
+            } else if (sonarResults.summary && parseInt(sonarResults.summary.vulnerabilities) > 0) {
+              formattedIssues += '\n**🔒 Security Vulnerabilities:** ' + sonarResults.summary.vulnerabilities + ' vulnerabilities detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
             }
             
-            // Format code smells (limit to first 10 to avoid overflow)
-            if (code_smells && code_smells.trim()) {
+            // Format code smells
+            if (code_smells && code_smells.trim() && code_smells !== 'Too many issues - check SonarCloud report') {
               const smellsArray = code_smells.split('---').filter(s => s.trim());
-              const limitedSmells = smellsArray.slice(0, 10).join('---');
-              formattedIssues += '\n**👃 Code Smells (showing first 10):**\n' + limitedSmells;
-              if (smellsArray.length > 10) {
-                formattedIssues += `\n\n*... and ${smellsArray.length - 10} more code smells. Check the [SonarCloud report](${{ inputs.sonar_url }}) for complete details.*\n`;
+              const limitedSmells = smellsArray.slice(0, 5).join('---'); // Reduced from 10 to 5
+              formattedIssues += '\n**👃 Code Smells (showing first 5):**\n' + limitedSmells;
+              if (smellsArray.length > 5) {
+                formattedIssues += `\n\n*... and ${smellsArray.length - 5} more code smells. Check the [SonarCloud report](${{ inputs.sonar_url }}) for complete details.*\n`;
               }
+            } else if (sonarResults.summary && parseInt(sonarResults.summary.code_smells) > 0) {
+              formattedIssues += '\n**👃 Code Smells:** ' + sonarResults.summary.code_smells + ' code smells detected. Check the [SonarCloud report](${{ inputs.sonar_url }}) for details.\n';
             }
             
             return formattedIssues;
