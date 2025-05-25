@@ -33,6 +33,8 @@ const inputs = {
   sonar_url: process.env.SONAR_URL || "#",
   pr_number: parseInt(process.env.PR_NUMBER) || 0,
   sonar_analysis_results: process.env.SONAR_ANALYSIS_RESULTS || "{}",
+  reports_committed: process.env.REPORTS_COMMITTED === "true",
+  report_url: process.env.REPORT_URL || "",
 };
 
 // GitHub context
@@ -151,6 +153,8 @@ async function postComment() {
     console.log(`  Sonar Score: ${inputs.sonar_score}`);
     console.log(`  Sonar Status: ${inputs.sonar_status}`);
     console.log(`  PR Number: ${inputs.pr_number}`);
+    console.log(`  Reports Committed: ${inputs.reports_committed}`);
+    console.log(`  Report URL: ${inputs.report_url}`);
     console.log("");
 
     console.log("Parsing detailed SonarCloud analysis results...");
@@ -247,9 +251,11 @@ async function postComment() {
         inputs.ai_score
       }/100 | \`${createProgressBar(inputs.ai_score)}\` | 5% |`,
       "",
-      "## 🔗 Quick Links",
-      `- 📊 **[SonarCloud Report](${inputs.sonar_url})** - Detailed code quality analysis`,
-      `- 🔍 **[Full Analysis Logs](https://github.com/${owner}/${repo}/actions/runs/${run_id})** - Complete CI results`,
+      ...(inputs.reports_committed && inputs.report_url
+        ? [
+            `- 💾 **[Persistent Analysis Report](${inputs.report_url})** - Stored analysis results for team tracking`,
+          ]
+        : []),
       "",
     ]; // Add code quality analysis section
     comment.push("## 🔧 Code Quality Analysis");
