@@ -22,10 +22,11 @@ runs:
       id: analysis
       shell: bash
       run: |
-        cd ${{ github.action_path }}
+        # Change to workspace root to access git repository
+        cd ${{ github.workspace }}
 
         # Install required dependencies
         npm install --silent @actions/core
 
         # Run the team behavior analysis script
-        node team-behavior.js
+        node ${{ github.action_path }}/team-behavior.js

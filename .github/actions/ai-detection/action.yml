@@ -25,4 +25,4 @@ runs:
         npm install --silent @actions/core
 
         # Run the AI detection analysis script
-        node ai-detection.js
+        node ${{ github.action_path }}/ai-detection.js

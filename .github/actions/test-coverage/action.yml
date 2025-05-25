@@ -35,10 +35,11 @@ runs:
       env:
         LANGUAGE: ${{ inputs.language }}
       run: |
-        cd ${{ github.action_path }}
+        # Change to workspace root to access project files and save reports
+        cd ${{ github.workspace }}
 
         # Install required dependencies
         npm install --silent @actions/core
 
         # Run the test coverage analysis script
-        node test-coverage.js
+        node ${{ github.action_path }}/test-coverage.js
