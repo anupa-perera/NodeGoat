@@ -253,8 +253,6 @@ async function postComment() {
       }/100 | \`${createProgressBar(inputs.ai_score)}\` | 5% |`,
       "",
       "## 🔗 Quick Links",
-      `- 📊 **[SonarCloud Report](${inputs.sonar_url})** - Detailed code quality analysis`,
-      `- 🔍 **[Full Analysis Logs](https://github.com/${owner}/${repo}/actions/runs/${run_id})** - Complete CI results`,
       ...(inputs.reports_committed && inputs.report_url
         ? [
             `- 💾 **[Persistent Analysis Report](${inputs.report_url})** - Stored analysis results for team tracking`,
