@@ -6,7 +6,7 @@
     "sonar": 0,
     "security": 100,
     "frontend": 0,
-    "team": 72,
+    "team": 73,
     "ai": 100
   },
   "weights": {
@@ -25,5 +25,5 @@
     "team": 7,
     "ai": 5
   },
-  "calculation_timestamp": "2025-05-26T02:27:15.925Z"
+  "calculation_timestamp": "2025-05-26T03:17:46.375Z"
 }
