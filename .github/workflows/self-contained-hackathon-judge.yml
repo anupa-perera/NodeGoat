@@ -247,13 +247,28 @@ jobs:
           pr_number: ${{ steps.pr_info.outputs.pr_number }}
           reports_dir: "reports/teams"
 
-      - name: Upload HTML Report
+      - name: Commit HTML Report to Repository
+        id: commit_html_report
         if: steps.generate_html_report.outputs.html_file
-        uses: actions/upload-artifact@v4
-        with:
-          name: html-report-${{ steps.pr_info.outputs.team_name }}-pr${{ steps.pr_info.outputs.pr_number }}
-          path: ${{ steps.generate_html_report.outputs.html_file }}
-          retention-days: 30
+        run: |
+          echo "🔄 Committing HTML report to repository..."
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Check if HTML files were created and need to be committed
+          if [[ -n "$(git status --porcelain reports/)" ]]; then
+            echo "HTML report changes detected, committing..."
+            git add reports/
+            git commit -m "📊 Add HTML report for ${{ steps.pr_info.outputs.team_name }} PR #${{ steps.pr_info.outputs.pr_number }}"
+            
+            CURRENT_BRANCH=$(git branch --show-current)
+            git push origin $CURRENT_BRANCH
+            echo "HTML report committed and pushed successfully!"
+            echo "html_committed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No HTML report changes to commit"
+            echo "html_committed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Post Results Comment
         if: github.event_name == 'pull_request'
