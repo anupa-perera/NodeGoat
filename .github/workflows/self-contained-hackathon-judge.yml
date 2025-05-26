@@ -231,11 +231,11 @@ jobs:
             # Generate report URL for persistent access (only if reports were committed)
             REPORT_URL="https://github.com/${GITHUB_REPOSITORY}/tree/${DEFAULT_BRANCH}/reports/teams/${TEAM_NAME}/pr-${PR_NUMBER}"
             echo "Report URL: ${REPORT_URL}"
-            echo "report_url=${REPORT_URL}" >> $GITHUB_OUTPUT
-          else
+            echo "report_url=${REPORT_URL}" >> $GITHUB_OUTPUT          else
             echo "No changes to commit"
             echo "reports_committed=false" >> $GITHUB_OUTPUT
-            echo "report_url=" >> $GITHUB_OUTPUT          fi
+            echo "report_url=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Generate HTML Report
         id: generate_html_report
