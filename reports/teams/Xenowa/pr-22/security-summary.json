@@ -10,6 +10,6 @@
   "toolsUsed": [
     "trivy"
   ],
-  "timestamp": "2025-05-25T18:50:37.487Z",
+  "timestamp": "2025-05-25T19:09:03.308Z",
   "details": "No major security vulnerabilities detected."
 }
