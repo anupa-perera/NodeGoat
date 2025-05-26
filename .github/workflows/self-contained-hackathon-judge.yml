@@ -259,9 +259,9 @@ jobs:
             echo "HTML report changes detected, committing..."
             git add reports/
             git commit -m "📊 Add HTML report for ${{ steps.pr_info.outputs.team_name }} PR #${{ steps.pr_info.outputs.pr_number }}"
-            
-            CURRENT_BRANCH=$(git branch --show-current)
-            git push origin $CURRENT_BRANCH            echo "HTML report committed and pushed successfully!"
+              CURRENT_BRANCH=$(git branch --show-current)
+            git push origin $CURRENT_BRANCH
+            echo "HTML report committed and pushed successfully!"
             echo "html_committed=true" >> $GITHUB_OUTPUT
           else
             echo "No HTML report changes to commit"
