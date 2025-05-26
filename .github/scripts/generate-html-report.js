@@ -92,13 +92,13 @@ function generateScoreChart(scores, weights) {
     .join("");
 }
 
-function generateSecurityDetails(securityData) {
+function generateSecurityDetails(securityData, trivyData) {
   if (!securityData) return "<p>No security data available</p>";
 
   const { summary } = securityData;
   const totalIssues = summary.totalIssues || 0;
 
-  if (totalIssues === 0) {
+  if (totalIssues === 0 && (!trivyData || !trivyData.length)) {
     return `
       <div class="security-success">
         <div class="success-icon">🛡️</div>
@@ -109,7 +109,7 @@ function generateSecurityDetails(securityData) {
     `;
   }
 
-  return `
+  let content = `
     <div class="security-issues">
       <div class="issue-summary">
         <div class="issue-count high">High: ${summary.highSeverity || 0}</div>
@@ -123,9 +123,21 @@ function generateSecurityDetails(securityData) {
       }</p>
     </div>
   `;
+  // Add detailed Trivy vulnerabilities
+  if (trivyData && trivyData.length > 0) {
+    content += generateTrivyDetails(trivyData);
+  } else {
+    content += `
+      <div style="margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 8px; color: #155724;">
+        <p><strong>🛡️ No security vulnerabilities found by Trivy scanner!</strong></p>
+      </div>
+    `;
+  }
+
+  return content;
 }
 
-function generateSonarDetails(sonarData) {
+function generateSonarDetails(sonarData, githubRepo = "CoTuring/NodeGoat") {
   if (!sonarData) return "<p>No SonarCloud data available</p>";
 
   const { summary } = sonarData;
@@ -134,7 +146,7 @@ function generateSonarDetails(sonarData) {
   const codeSmells = parseInt(summary.code_smells) || 0;
   const coverage = parseFloat(summary.coverage) || 0;
 
-  return `
+  let content = `
     <div class="sonar-metrics">
       <div class="metric-card">
         <div class="metric-icon">🐛</div>
@@ -162,7 +174,12 @@ function generateSonarDetails(sonarData) {
         summary.sonar_project_url
       }" target="_blank">View in SonarCloud 🔗</a>
     </div>
-  `;
+  `; // Add detailed issues
+  if (sonarData.detailed_reports) {
+    content += generateSonarDetailedIssues(sonarData, githubRepo);
+  }
+
+  return content;
 }
 
 function generateTeamDetails(teamData) {
@@ -264,6 +281,398 @@ function generateAIDetails(aiData) {
   `;
 }
 
+function generateSonarDetailedIssues(sonarData, githubRepo) {
+  if (!sonarData || !sonarData.detailed_reports) return "";
+
+  const severityColors = {
+    BLOCKER: "#d73527",
+    CRITICAL: "#ff6b35",
+    MAJOR: "#ff9500",
+    MINOR: "#f7c52d",
+    INFO: "#28a745",
+  };
+
+  const severityIcons = {
+    BLOCKER: "🚨",
+    CRITICAL: "❌",
+    MAJOR: "⚠️",
+    MINOR: "💡",
+    INFO: "ℹ️",
+  };
+  // Extract ALL issues from multiple sources in the SonarCloud data
+  const allIssues = {
+    vulnerabilities: [],
+    bugs: [],
+    code_smells: [],
+  };
+
+  // PRIMARY: Get ALL issues from detailed_reports -> {category} -> by_file (this has complete data)
+  const categories = ["bugs", "vulnerabilities", "code_smells"];
+
+  categories.forEach((category) => {
+    if (
+      sonarData.detailed_reports[category] &&
+      sonarData.detailed_reports[category].by_file
+    ) {
+      const byFileData = sonarData.detailed_reports[category].by_file; // Extract all issues from all files
+      Object.keys(byFileData).forEach((filename) => {
+        const fileIssues = byFileData[filename];
+        if (Array.isArray(fileIssues)) {
+          fileIssues.forEach((issue, issueIndex) => {
+            // Validate issue data before processing
+            if (!issue || typeof issue !== "object") {
+              console.warn(
+                `Warning: Invalid issue data in ${filename}[${issueIndex}]:`,
+                issue
+              );
+              return;
+            }
+
+            const fullIssue = {
+              file: filename,
+              line: issue.line || 1,
+              severity: issue.severity || "UNKNOWN",
+              type: issue.type || "UNKNOWN",
+              message: issue.message || "No message available",
+              rule: issue.rule || "Unknown",
+              effort: issue.effort || "Unknown",
+              creation_date: issue.creation_date,
+              update_date: issue.update_date,
+            };
+
+            // Add to appropriate category
+            if (category === "bugs") allIssues.bugs.push(fullIssue);
+            else if (category === "vulnerabilities")
+              allIssues.vulnerabilities.push(fullIssue);
+            else if (category === "code_smells")
+              allIssues.code_smells.push(fullIssue);
+          });
+        }
+      });
+
+      console.log(
+        `Extracted ${allIssues[category].length} ${category} from by_file data`
+      );
+    }
+  });
+
+  // FALLBACK: If by_file data is empty, try the limited issues array
+  categories.forEach((category) => {
+    if (
+      allIssues[category].length === 0 &&
+      sonarData.detailed_reports[category] &&
+      sonarData.detailed_reports[category].issues
+    ) {
+      console.log(
+        `Fallback: Using ${sonarData.detailed_reports[category].issues.length} ${category} from limited issues array`
+      );
+      allIssues[category] = [...sonarData.detailed_reports[category].issues];
+    }
+  }); // ADDITIONAL: Also check files_affected.most_affected_files for any missing issues
+  // (this is supplementary data that might have additional context)
+  if (
+    sonarData.files_affected &&
+    sonarData.files_affected.most_affected_files
+  ) {
+    const existingIssueKeys = new Set();
+
+    // Create a set of existing issues to avoid duplicates
+    Object.values(allIssues)
+      .flat()
+      .forEach((issue) => {
+        const key = `${issue.file}:${issue.line}:${issue.type}:${issue.message}`;
+        existingIssueKeys.add(key);
+      });
+
+    sonarData.files_affected.most_affected_files.forEach((fileData) => {
+      if (fileData.issues && Array.isArray(fileData.issues)) {
+        fileData.issues.forEach((issue) => {
+          const issueKey = `${fileData.file}:${issue.line}:${issue.type}:${issue.message}`;
+
+          // Only add if this exact issue doesn't already exist
+          if (!existingIssueKeys.has(issueKey)) {
+            const convertedIssue = {
+              file: fileData.file,
+              line: issue.line,
+              severity: issue.severity,
+              type: issue.type,
+              message: issue.message,
+              rule: issue.rule || "Unknown",
+              effort: issue.effort || "Unknown",
+              creation_date: issue.creation_date,
+            };
+
+            // Add to the appropriate category based on type
+            if (issue.type === "BUG") allIssues.bugs.push(convertedIssue);
+            else if (issue.type === "VULNERABILITY")
+              allIssues.vulnerabilities.push(convertedIssue);
+            else if (issue.type === "CODE_SMELL")
+              allIssues.code_smells.push(convertedIssue);
+
+            existingIssueKeys.add(issueKey);
+          }
+        });
+      }
+    });
+  }
+
+  // Log totals
+  const totalIssues =
+    allIssues.bugs.length +
+    allIssues.vulnerabilities.length +
+    allIssues.code_smells.length;
+  console.log(
+    `Total SonarCloud issues found: ${totalIssues} (${allIssues.vulnerabilities.length} vulnerabilities, ${allIssues.bugs.length} bugs, ${allIssues.code_smells.length} code smells)`
+  );
+
+  let content = `
+    <div class="detailed-issues">
+      <h4>🔍 Detailed SonarCloud Issues</h4>
+  `;
+
+  // Process different types of issues in priority order
+  const issueTypes = [
+    { key: "vulnerabilities", icon: "🔓", label: "Security Vulnerabilities" },
+    { key: "bugs", icon: "🐛", label: "Bugs" },
+    { key: "code_smells", icon: "💭", label: "Code Smells" },
+  ];
+
+  let totalIssuesDisplayed = 0;
+  issueTypes.forEach(({ key: issueType, icon: typeIcon, label: typeLabel }) => {
+    const issues = allIssues[issueType];
+    if (!issues || issues.length === 0) return;
+
+    content += `
+      <div class="issue-type-section">
+        <h5>${typeIcon} ${typeLabel} (${issues.length})</h5>
+        <div class="issues-list">
+    `;
+
+    // Sort issues by severity priority (BLOCKER > CRITICAL > MAJOR > MINOR > INFO)
+    const severityOrder = {
+      BLOCKER: 0,
+      CRITICAL: 1,
+      MAJOR: 2,
+      MINOR: 3,
+      INFO: 4,
+    };
+    const sortedIssues = [...issues].sort((a, b) => {
+      const severityCompare =
+        (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5);
+      if (severityCompare !== 0) return severityCompare;
+      return a.file.localeCompare(b.file);
+    }); // Display all issues without any limits
+    sortedIssues.forEach((issue, index) => {
+      // Validate that essential properties exist
+      if (!issue || !issue.file || !issue.message || !issue.severity) {
+        console.warn(
+          `Warning: Issue ${index} in ${issueType} has missing required data:`,
+          issue
+        );
+        return; // Skip this invalid issue
+      }
+
+      const githubLink = `https://github.com/${githubRepo}/blob/master/${
+        issue.file
+      }#L${issue.line || 1}`;
+      const severityColor = severityColors[issue.severity] || "#6c757d";
+      const severityIcon = severityIcons[issue.severity] || "•";
+
+      // Ensure all values are properly escaped and defined
+      const safeFile = (issue.file || "Unknown file").replace(
+        /[<>&"']/g,
+        (c) => {
+          return {
+            "<": "&lt;",
+            ">": "&gt;",
+            "&": "&amp;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[c];
+        }
+      );
+      const safeLine = issue.line || 1;
+      const safeSeverity = issue.severity || "UNKNOWN";
+      const safeMessage = (issue.message || "No description available").replace(
+        /[<>&"']/g,
+        (c) => {
+          return {
+            "<": "&lt;",
+            ">": "&gt;",
+            "&": "&amp;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[c];
+        }
+      );
+      const safeRule = (issue.rule || "Unknown rule").replace(
+        /[<>&"']/g,
+        (c) => {
+          return {
+            "<": "&lt;",
+            ">": "&gt;",
+            "&": "&amp;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[c];
+        }
+      );
+      const safeEffort = (issue.effort || "Unknown effort").replace(
+        /[<>&"']/g,
+        (c) => {
+          return {
+            "<": "&lt;",
+            ">": "&gt;",
+            "&": "&amp;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[c];
+        }
+      );
+
+      content += `
+        <div class="issue-item">
+          <div class="issue-header">
+            <span class="severity-badge" style="background-color: ${severityColor}">
+              ${severityIcon} ${safeSeverity}
+            </span>
+            <a href="${githubLink}" target="_blank" class="file-link">
+              📁 ${safeFile}:${safeLine}
+            </a>
+          </div>
+          <div class="issue-message">${safeMessage}</div>
+          <div class="issue-meta">
+            <span class="rule-tag">Rule: ${safeRule}</span>
+            <span class="effort-tag">Effort: ${safeEffort}</span>
+            ${
+              issue.creation_date
+                ? `<span class="date-tag">Created: ${new Date(
+                    issue.creation_date
+                  ).toLocaleDateString()}</span>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+      totalIssuesDisplayed++;
+    });
+    content += `
+        </div>
+      </div>
+    `;
+  }); // Add summary at the end with proper accounting of all issues
+  const actualTotalIssues =
+    allIssues.bugs.length +
+    allIssues.vulnerabilities.length +
+    allIssues.code_smells.length;
+  const totalSonarIssues =
+    sonarData.total_issues ||
+    (sonarData.summary
+      ? parseInt(sonarData.summary.bugs || 0) +
+        parseInt(sonarData.summary.vulnerabilities || 0) +
+        parseInt(sonarData.summary.code_smells || 0)
+      : 0);
+  content += `
+    <div class="issues-summary">
+      <p><strong>📊 Total Issues Found: ${actualTotalIssues}</strong></p>
+      ${
+        actualTotalIssues !== totalSonarIssues
+          ? `<p><strong>🔍 SonarCloud API Total: ${totalSonarIssues} issues</strong></p>
+         <p><em>Note: Extracted ${actualTotalIssues} detailed issues from SonarCloud data structure.</em></p>`
+          : `<p><em>✅ Successfully extracted and categorized all ${actualTotalIssues} SonarCloud issues with direct links to GitHub for easy navigation.</em></p>`
+      }
+      <p><em>📋 All ${actualTotalIssues} issues are displayed below with direct GitHub links for easy navigation.</em></p>
+    </div>
+  `;
+
+  content += `
+    </div>
+  `;
+
+  return content;
+}
+
+function generateTrivyDetails(trivyData, githubRepo = "CoTuring/NodeGoat") {
+  const severityColors = {
+    CRITICAL: "#d73527",
+    HIGH: "#ff6b35",
+    MEDIUM: "#ff9500",
+    LOW: "#f7c52d",
+    UNKNOWN: "#6c757d",
+  };
+
+  const severityIcons = {
+    CRITICAL: "🚨",
+    HIGH: "❌",
+    MEDIUM: "⚠️",
+    LOW: "💡",
+    UNKNOWN: "❓",
+  };
+
+  let content = `
+    <div class="trivy-details">
+      <h4>🛡️ Security Vulnerabilities (Trivy)</h4>
+  `;
+
+  trivyData.forEach((target) => {
+    if (!target.Vulnerabilities || target.Vulnerabilities.length === 0) return;
+
+    content += `
+      <div class="trivy-target">
+        <h5>📦 ${target.Target}</h5>
+        <div class="vulnerabilities-list">
+    `;
+
+    target.Vulnerabilities.forEach((vuln) => {
+      const severityColor = severityColors[vuln.Severity] || "#6c757d";
+      const severityIcon = severityIcons[vuln.Severity] || "•";
+      const cvssScore =
+        vuln.CVSS?.nvd?.V3Score || vuln.CVSS?.redhat?.V3Score || "N/A";
+
+      content += `
+        <div class="vulnerability-item">
+          <div class="vuln-header">
+            <span class="severity-badge" style="background-color: ${severityColor}">
+              ${severityIcon} ${vuln.Severity}
+            </span>
+            <span class="vuln-id">${vuln.VulnerabilityID}</span>
+            <span class="cvss-score">CVSS: ${cvssScore}</span>
+          </div>
+          <div class="vuln-package">
+            📦 Package: <strong>${vuln.PkgName}</strong> 
+            (${vuln.InstalledVersion} → ${
+        vuln.FixedVersion || "No fix available"
+      })
+          </div>
+          <div class="vuln-title">${vuln.Title}</div>
+          <div class="vuln-description">${vuln.Description}</div>
+          <div class="vuln-links">
+            ${
+              vuln.References
+                ? vuln.References.map(
+                    (ref) =>
+                      `<a href="${ref}" target="_blank" class="ref-link">🔗 Reference</a>`
+                  ).join(" ")
+                : ""
+            }
+          </div>
+        </div>
+      `;
+    });
+
+    content += `
+        </div>
+      </div>
+    `;
+  });
+
+  content += `
+    </div>
+  `;
+
+  return content;
+}
+
 function generateHTML(teamName, reportData) {
   const {
     scoreData,
@@ -272,7 +681,9 @@ function generateHTML(teamName, reportData) {
     teamData,
     aiData,
     coverageData,
+    trivyData,
     prNumber,
+    githubRepo = "CoTuring/NodeGoat",
   } = reportData;
 
   const overallScore = scoreData?.overall_score || 0;
@@ -667,10 +1078,196 @@ function generateHTML(teamName, reportData) {
                 width: 120px;
                 height: 120px;
             }
-            
-            .score-circle .score {
+              .score-circle .score {
                 font-size: 2.5rem;
             }
+        }
+        
+        /* Detailed Issues Styles */
+        .detailed-issues {
+            margin-top: 30px;
+        }
+        
+        .issue-type-section {
+            margin-bottom: 30px;
+        }
+        
+        .issue-type-section h5 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .issues-list {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .issue-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+        
+        .issue-item:hover {
+            transform: translateY(-2px);
+        }
+        
+        .issue-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .severity-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+        }
+        
+        .file-link {
+            color: #3498db;
+            text-decoration: none;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .file-link:hover {
+            text-decoration: underline;
+        }
+        
+        .issue-message {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .issue-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.8rem;
+        }
+          .rule-tag, .effort-tag, .date-tag {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #666;
+        }
+        
+        .issues-summary {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        /* Trivy Security Vulnerabilities Styles */
+        .trivy-details {
+            margin-top: 30px;
+        }
+        
+        .trivy-target {
+            margin-bottom: 25px;
+        }
+        
+        .trivy-target h5 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 6px;
+        }
+        
+        .vulnerabilities-list {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .vulnerability-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #dc3545;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+        
+        .vulnerability-item:hover {
+            transform: translateY(-2px);
+        }
+        
+        .vuln-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .vuln-id {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        .cvss-score {
+            background: #ffc107;
+            color: #212529;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .vuln-package {
+            color: #495057;
+            margin-bottom: 8px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .vuln-title {
+            color: #2c3e50;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .vuln-description {
+            color: #666;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        .vuln-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .ref-link {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 0.8rem;
+            padding: 2px 6px;
+            border: 1px solid #3498db;
+            border-radius: 3px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .ref-link:hover {
+            background-color: #3498db;
+            color: white;
         }
     </style>
 </head>
@@ -689,9 +1286,7 @@ function generateHTML(teamName, reportData) {
             </div>
             <div class="grade-info">Grade: ${grade} - ${description}</div>
             <div>Overall Score: ${overallScore}/100</div>
-        </section>
-        
-        <main class="main-content">
+        </section>        <main class="main-content">
             <section class="section">
                 <h2>📊 Score Breakdown</h2>
                 ${generateScoreChart(
@@ -701,13 +1296,13 @@ function generateHTML(teamName, reportData) {
             </section>
             
             <section class="section">
-                <h2>🔒 Security Analysis</h2>
-                ${generateSecurityDetails(securityData)}
+                <h2>⚡ Code Quality & Issues (SonarCloud)</h2>
+                ${generateSonarDetails(sonarData, githubRepo)}
             </section>
             
             <section class="section">
-                <h2>⚡ Code Quality (SonarCloud)</h2>
-                ${generateSonarDetails(sonarData)}
+                <h2>🔒 Security Analysis & Vulnerabilities</h2>
+                ${generateSecurityDetails(securityData, trivyData)}
             </section>
             
             <section class="section">
@@ -804,9 +1399,7 @@ function main() {
 
     console.log(`📁 Using latest PR: ${latestPR}`);
 
-    const reportDir = path.join(teamDir, latestPR);
-
-    // Load all JSON files
+    const reportDir = path.join(teamDir, latestPR); // Load all JSON files
     const reportData = {
       scoreData: loadJsonFile(path.join(reportDir, "score-breakdown.json")),
       securityData: loadJsonFile(path.join(reportDir, "security-summary.json")),
@@ -816,7 +1409,9 @@ function main() {
       teamData: loadJsonFile(path.join(reportDir, "team-analysis.json")),
       aiData: loadJsonFile(path.join(reportDir, "ai-analysis.json")),
       coverageData: loadJsonFile(path.join(reportDir, "coverage-summary.json")),
+      trivyData: loadJsonFile(path.join(reportDir, "trivy-results.json")),
       prNumber: latestPR.split("-")[1],
+      githubRepo: process.env.GITHUB_REPOSITORY || "CoTuring/NodeGoat",
     };
 
     // Generate HTML

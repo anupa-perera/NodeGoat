@@ -231,9 +231,8 @@ function createDetailedIssueReport(issues) {
       report.by_rule[rule].files.push(fileEntry);
     }
   });
-
-  // Add individual issues for detailed view (limit to prevent huge output)
-  report.issues = issues.slice(0, 20).map((issue) => ({
+  // Add individual issues for detailed view (remove artificial limit, show all available)
+  report.issues = issues.map((issue) => ({
     file: issue.component
       ? issue.component.replace(/^[^:]+:/, "")
       : "Unknown file",
@@ -295,7 +294,7 @@ async function fetchSonarDetails() {
       measuresResponse.component.measures.forEach((measure) => {
         measures[measure.metric] = measure.value;
       });
-    } // Fetch detailed issues with expanded fields
+    } // Fetch detailed issues with expanded fields and larger page size
     const issuesUrl = `https://sonarcloud.io/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&ps=500&facets=severities,types&additionalFields=comments`;
     const issuesResponse = await makeRequest(issuesUrl);
 
