@@ -1,69 +1,123 @@
-# Simplified Hackathon Judge Workflow
+# Hackathon Judge - Automated Code Analysis Workflow
 
-This directory contains a modularized version of the hackathon judge workflow, broken down into reusable GitHub Actions.
+This repository contains a comprehensive automated hackathon judging system that analyzes pull requests and generates detailed reports for teams. The system evaluates code quality, security, testing, frontend usability, team collaboration, and AI usage attribution.
 
-## 📁 Structure
+## 🎯 What It Does
+
+### Automated Analysis Pipeline
+
+The workflow automatically runs when:
+
+- **Pull Requests** are opened, synchronized, or reopened
+- **Manual Workflow Dispatch** is triggered
+
+### Complete Team Evaluation
+
+For each PR submission, the system:
+
+1. **Extracts Team Information** from PR metadata
+2. **Detects Technology Stack** (language, framework, frontend presence)
+3. **Installs Dependencies** based on detected stack
+4. **Runs Tests & Coverage Analysis**
+5. **Performs SonarCloud Code Quality Analysis**
+6. **Conducts Security Vulnerability Scanning**
+7. **Audits Frontend Usability** (if applicable)
+8. **Analyzes Team Collaboration Patterns**
+9. **Detects AI Usage Attribution**
+10. **Calculates Final Score** with weighted components
+11. **Generates Multiple Report Formats**
+12. **Commits Reports to Repository**
+13. **Creates Dashboard Index Page**
+14. **Posts Results as PR Comments**
+
+## 📊 Reports Generated
+
+### 1. **Team Directory Structure**
 
 ```
-.github/
-├── workflows/
-│   └── self-contained-hackathon-judge.yml# Main workflow
-└── actions/
-    ├── setup-env/                        # Environment setup
-    ├── detect-stack/                     # Technology detection
-    ├── install-deps/                     # Dependency installation
-    ├── test-coverage/                    # Test execution & coverage
-    ├── sonar-analysis/                   # SonarCloud integration
-    ├── security-scan/                    # Security vulnerability scanning
-    ├── frontend-audit/                   # Lighthouse & UX analysis
-    ├── team-behavior/                    # Git history analysis
-    ├── ai-detection/                     # AI usage detection
-    ├── calculate-score/                  # Score calculation
-    └── post-comment/                     # PR comment posting
+reports/teams/[TeamName]/pr-[PR-Number]/
+├── ai-analysis.json              # AI usage detection results
+├── coverage-summary.json         # Test coverage metrics
+├── security-summary.json         # Security vulnerability summary
+├── team-analysis.json           # Team collaboration analysis
+├── trivy-results.json           # Detailed security scan results
+├── score-breakdown.json         # Component scores and weights
+├── sonar-analysis-results.json  # SonarCloud analysis details
+├── analysis-[timestamp].json    # Timestamped analysis metadata
+├── latest-summary.md            # Human-readable summary
+└── hackathon-report-[TeamName].html  # Detailed HTML report
 ```
 
-## 🎯 Key Improvements
+### 2. **Dashboard Index Page**
 
-### ✅ Readability
+- **Location**: `reports/index.html`
+- **Features**:
+  - Team performance overview cards
+  - Statistics grid (total teams, average score, top performer)
+  - Direct links to individual team reports
+  - Responsive design for mobile/desktop
+  - Automatic updates when new reports are added
 
-- **Modular Design**: Each analysis type is in its own action
-- **Clear Inputs/Outputs**: Well-defined interfaces between components
-- **Reduced Duplication**: Common patterns abstracted into reusable actions
-- **Environment Variables**: Centralized configuration
+### 3. **GitHub Actions Artifacts**
 
-### ✅ Maintainability
+- **Name**: `hackathon-analysis-[TeamName]-pr[PR-Number]`
+- **Contents**: All JSON reports and analysis files
+- **Retention**: 30 days
 
-- **Single Responsibility**: Each action has one clear purpose
-- **Easy Testing**: Actions can be tested independently
-- **Version Control**: Individual actions can be versioned separately
-- **Debugging**: Easier to isolate and fix issues
+## 🔧 Environment Variables
 
-### ✅ Flexibility
+### Required Environment Variables
 
-- **Conditional Execution**: Actions run only when needed
-- **Language Agnostic**: Supports multiple programming languages
-- **Configurable Weights**: Easy to adjust scoring weights
-- **Extensible**: New analysis types can be added easily
-
-## 🔧 Configuration
+```yaml
+env:
+  NODE_VERSION: "18" # Node.js version for setup
+  JAVA_VERSION: "17" # Java version for SonarCloud
+  SONAR_SCANNER_VERSION: "5.0.1.3006" # SonarCloud scanner version
+  PYTHON_VERSION: "3.x" # Python version for tools
+```
 
 ### Required Secrets
 
 - `SONAR_TOKEN`: SonarCloud authentication token
 - `GITHUB_TOKEN`: Automatically provided by GitHub Actions
 
-### Required Variables
+### Required Repository Variables
 
+- `SONAR_PROJECT_KEY`: Your SonarCloud project key
 - `SONAR_ORGANIZATION`: Your SonarCloud organization name
 
-### Environment Variables
+### Required Permissions
 
 ```yaml
-env:
-  NODE_VERSION: "18"
-  JAVA_VERSION: "17"
-  SONAR_SCANNER_VERSION: "5.0.1.3006"
-  PYTHON_VERSION: "3.x"
+permissions:
+  issues: write # To post PR comments
+  pull-requests: write # To update PR status
+  contents: write # To commit reports to repository
+```
+
+## 📁 Repository Structure
+
+```
+.github/
+├── workflows/
+│   └── self-contained-hackathon-judge.yml  # Main workflow
+├── actions/                                # Modular analysis components
+│   ├── setup-env/                         # Environment setup
+│   ├── detect-stack/                      # Technology detection
+│   ├── install-deps/                      # Dependency installation
+│   ├── test-coverage/                     # Test execution & coverage
+│   ├── sonar-analysis/                    # SonarCloud integration
+│   ├── security-scan/                     # Security vulnerability scanning
+│   ├── frontend-audit/                    # Lighthouse & UX analysis
+│   ├── team-behavior/                     # Git history analysis
+│   ├── ai-detection/                      # AI usage detection
+│   ├── calculate-score/                   # Score calculation
+│   ├── generate-html-report/              # HTML report generation
+│   └── post-comment/                      # PR comment posting
+└── scripts/
+    ├── extract-pr-info.js                 # PR metadata extraction
+    ├── generate-index.js                  # Dashboard generation
+    └── generate-html-report.js            # HTML report creation
 ```
 
 ## 📊 Scoring System
@@ -77,75 +131,30 @@ env:
 | **Team Collaboration** | 10%    | Git history, commit quality, author diversity            |
 | **AI Attribution**     | 5%     | Proper attribution of AI-assisted development            |
 
-## 🚀 Usage
+## 🚀 Access Reports
 
-The workflow automatically triggers on:
+### Team Reports
 
-- Pull request events (opened, synchronized, reopened)
-- Manual workflow dispatch
+Individual team reports are accessible at:
 
-### Manual Trigger
-
-```bash
-# Via GitHub CLI
-gh workflow run "Hackathon Judge" --field pr_number=123
-
-# Via GitHub UI
-# Go to Actions tab → Select workflow → Run workflow
+```
+https://github.com/[owner]/[repo]/tree/main/reports/teams/[TeamName]/pr-[PR-Number]/
 ```
 
-## 🛠️ Customization
+### Dashboard
 
-### Adding New Analysis Types
+The main dashboard is available at:
 
-1. Create a new action in `.github/actions/your-analysis/`
-2. Add the action to the main workflow
-3. Update the score calculation weights
-4. Modify the comment template if needed
-
-### Adjusting Score Weights
-
-Edit the weights in `.github/actions/calculate-score/action.yml`:
-
-```bash
-TEST_WEIGHT=25
-SONAR_WEIGHT=30
-SECURITY_WEIGHT=20
-FRONTEND_WEIGHT=10
-TEAM_WEIGHT=10
-AI_WEIGHT=5
+```
+https://github.com/[owner]/[repo]/blob/main/reports/index.html
 ```
 
-### Supporting New Languages
+### PR Comments
 
-Add language detection logic to `.github/actions/detect-stack/action.yml` and corresponding setup in other actions.
+Each analyzed PR receives an automated comment with:
 
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **SonarCloud Analysis Fails**
-
-   - Check `SONAR_TOKEN` is correctly set
-   - Verify `SONAR_ORGANIZATION` variable
-   - Ensure project key is valid
-
-2. **Tests Don't Run**
-
-   - Check if test scripts are defined in `package.json`
-   - Verify dependencies are installed correctly
-   - Review test file naming conventions
-
-3. **Security Scan Fails**
-   - Ensure network access for downloading tools
-   - Check file permissions for Trivy installation
-   - Verify language-specific security tools are available
-
-### Debug Mode
-
-Enable debug logging by setting:
-
-```yaml
-env:
-  ACTIONS_STEP_DEBUG: true
-```
+- Overall score and breakdown
+- Links to detailed reports
+- Security vulnerability summary
+- Code quality metrics
+- Dashboard link

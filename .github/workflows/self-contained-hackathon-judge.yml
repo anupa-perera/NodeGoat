@@ -227,11 +227,11 @@ jobs:
             git push origin $CURRENT_BRANCH
             echo "Reports committed and pushed successfully!"
             echo "reports_committed=true" >> $GITHUB_OUTPUT
-            
-            # Generate report URL for persistent access (only if reports were committed)
+              # Generate report URL for persistent access (only if reports were committed)
             REPORT_URL="https://github.com/${GITHUB_REPOSITORY}/tree/${DEFAULT_BRANCH}/reports/teams/${TEAM_NAME}/pr-${PR_NUMBER}"
             echo "Report URL: ${REPORT_URL}"
-            echo "report_url=${REPORT_URL}" >> $GITHUB_OUTPUT          else
+            echo "report_url=${REPORT_URL}" >> $GITHUB_OUTPUT
+          else
             echo "No changes to commit"
             echo "reports_committed=false" >> $GITHUB_OUTPUT
             echo "report_url=" >> $GITHUB_OUTPUT
@@ -261,9 +261,8 @@ jobs:
             git commit -m "📊 Add HTML report for ${{ steps.pr_info.outputs.team_name }} PR #${{ steps.pr_info.outputs.pr_number }}"
             
             CURRENT_BRANCH=$(git branch --show-current)
-            git push origin $CURRENT_BRANCH
-            echo "HTML report committed and pushed successfully!"
-                        echo "html_committed=true" >> $GITHUB_OUTPUT
+            git push origin $CURRENT_BRANCH            echo "HTML report committed and pushed successfully!"
+            echo "html_committed=true" >> $GITHUB_OUTPUT
           else
             echo "No HTML report changes to commit"
             echo "html_committed=false" >> $GITHUB_OUTPUT
@@ -271,9 +270,13 @@ jobs:
 
       - name: Generate and Commit Reports Index
         id: generate_index
-        if: steps.commit_html_report.outputs.html_committed == 'true'
+        if: steps.commit_results.outputs.reports_committed == 'true'
         run: |
           echo "🔄 Generating reports index page..."
+
+          # Configure git for commits
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
 
           # Generate the index page
           node .github/scripts/generate-index.js
@@ -282,23 +285,24 @@ jobs:
           if [[ -f "reports/index.html" ]]; then
             echo "✅ Index page generated successfully"
             
-            # Check if there are changes to commit
-            if [[ -n "$(git status --porcelain reports/index.html)" ]]; then
-              echo "📤 Committing updated index page..."
-              git add reports/index.html
+            # Always add and commit the index page (it might have updated team data)
+            echo "📤 Committing updated index page..."
+            git add reports/index.html
+            
+            # Check if there are actual changes to commit
+            if git diff --cached --quiet; then
+              echo "📋 No changes to index page, already up to date"
+            else
               git commit -m "📊 Update reports dashboard index page"
               
               CURRENT_BRANCH=$(git branch --show-current)
               git push origin $CURRENT_BRANCH
               echo "✅ Reports index committed and pushed successfully!"
-              
-              # Set repository URL for users to access
-              REPORTS_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${CURRENT_BRANCH}/reports/index.html"
-              echo "📋 Reports dashboard available at: ${REPORTS_URL}"
-              echo "reports_index_url=${REPORTS_URL}" >> $GITHUB_OUTPUT
-            else
-              echo "📋 No changes to index page, already up to date"
             fi
+              # Set repository URL for users to access (always set this)
+            REPORTS_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${CURRENT_BRANCH}/reports/index.html"
+            echo "📋 Reports dashboard available at: ${REPORTS_URL}"
+            echo "reports_index_url=${REPORTS_URL}" >> $GITHUB_OUTPUT
           else
             echo "❌ Failed to generate index page"
           fi
