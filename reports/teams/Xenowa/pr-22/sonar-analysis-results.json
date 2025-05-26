@@ -6,7 +6,7 @@
     "coverage": "0.0",
     "quality_gate_status": "{\"level\":\"OK\",\"conditions\":[{\"metric\":\"new_reliability_rating\",\"op\":\"GT\",\"period\":1,\"error\":\"1\",\"actual\":\"1\",\"level\":\"OK\"},{\"metric\":\"new_security_rating\",\"op\":\"GT\",\"period\":1,\"error\":\"1\",\"actual\":\"1\",\"level\":\"OK\"},{\"metric\":\"new_maintainability_rating\",\"op\":\"GT\",\"period\":1,\"error\":\"1\",\"actual\":\"1\",\"level\":\"OK\"},{\"metric\":\"new_duplicated_lines_density\",\"op\":\"GT\",\"period\":1,\"error\":\"3\",\"actual\":\"0.0\",\"level\":\"OK\"},{\"metric\":\"new_security_hotspots_reviewed\",\"op\":\"LT\",\"period\":1,\"error\":\"100\",\"actual\":\"100.0\",\"level\":\"OK\"}],\"ignoredConditions\":false}",
     "sonar_project_url": "https://sonarcloud.io/project/overview?id=CoTuring_NodeGoat",
-    "analysis_date": "2025-05-26T03:36:40.103Z"
+    "analysis_date": "2025-05-26T03:46:44.570Z"
   },
   "detailed_issues": {
     "bugs": "- **MINOR** in `app/views/tutorial/ssrf.html:23` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MAJOR** in `app/views/tutorial/a9.html:148` - Remove this deprecated \\\"xmp\\\" element. (Rule: Web:UnsupportedTagsInHtml5Check, Effort: 20min)\n- **MAJOR** in `app/views/tutorial/a9.html:155` - Remove this deprecated \\\"xmp\\\" element. (Rule: Web:UnsupportedTagsInHtml5Check, Effort: 20min)\n- **MAJOR** in `app/views/tutorial/a9.html:162` - Remove this deprecated \\\"xmp\\\" element. (Rule: Web:UnsupportedTagsInHtml5Check, Effort: 20min)\n- **MINOR** in `app/views/tutorial/a5.html:86` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MINOR** in `app/views/tutorial/a1.html:79` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MINOR** in `app/views/tutorial/a1.html:98` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MINOR** in `app/views/tutorial/a10.html:31` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MINOR** in `app/views/tutorial/a3.html:157` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n- **MINOR** in `app/views/tutorial/a4.html:32` - Add a \\\"title\\\" attribute to this <iframe> tag. (Rule: Web:FrameWithoutTitleCheck, Effort: 5min)\n\n*... and 3 more bug issues.*",
@@ -3313,5 +3313,5 @@
     ]
   },
   "total_issues": 136,
-  "timestamp": "2025-05-26T03:36:40.104Z"
+  "timestamp": "2025-05-26T03:46:44.571Z"
 }
