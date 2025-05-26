@@ -1412,13 +1412,14 @@ function main() {
       trivyData: loadJsonFile(path.join(reportDir, "trivy-results.json")),
       prNumber: latestPR.split("-")[1],
       githubRepo: process.env.GITHUB_REPOSITORY || "CoTuring/NodeGoat",
-    };    // Generate HTML
+    };
+    // Generate HTML
     const html = generateHTML(teamName, reportData);
 
     // Write HTML file to the team's reports directory (persistent location)
     const htmlFileName = `hackathon-report-${teamName}.html`;
     const persistentOutputPath = path.join(reportDir, htmlFileName);
-    
+
     // Also write to root for backward compatibility (if needed)
     const rootOutputPath = OUTPUT_FILE.includes(".html")
       ? OUTPUT_FILE.replace(".html", `-${teamName}.html`)
@@ -1426,8 +1427,10 @@ function main() {
 
     // Save to persistent location (team's reports directory)
     fs.writeFileSync(persistentOutputPath, html);
-    console.log(`✅ HTML report generated (persistent): ${persistentOutputPath}`);
-    
+    console.log(
+      `✅ HTML report generated (persistent): ${persistentOutputPath}`
+    );
+
     // Also save to root directory for GitHub Actions to find
     fs.writeFileSync(rootOutputPath, html);
     console.log(`✅ HTML report generated (root): ${rootOutputPath}`);
