@@ -33,9 +33,7 @@ runs:
 
         # Run the HTML generator script
         cd $GITHUB_WORKSPACE
-        node .github/scripts/generate-html-report.js "$REPORTS_DIR" "hackathon-report.html"
-
-        # Check if the HTML file was created
+        node .github/scripts/generate-html-report.js "$REPORTS_DIR" "hackathon-report.html"        # Check if the HTML file was created
         if [[ -f "hackathon-report-$TEAM_NAME.html" ]]; then
           echo "✅ HTML report generated successfully"
           echo "html_file=hackathon-report-$TEAM_NAME.html" >> $GITHUB_OUTPUT
@@ -44,12 +42,20 @@ runs:
           file_size=$(wc -c < "hackathon-report-$TEAM_NAME.html")
           echo "📊 HTML report size: $file_size bytes"
           
+          # Check for persistent location as well
+          persistent_path="$REPORTS_DIR/$TEAM_NAME/pr-$PR_NUMBER/hackathon-report-$TEAM_NAME.html"
+          if [[ -f "$persistent_path" ]]; then
+            persistent_size=$(wc -c < "$persistent_path")
+            echo "📁 Persistent report also saved: $persistent_path ($persistent_size bytes)"
+          fi
+          
           # Create a summary
           echo "## 📊 HTML Report Generated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Team:** $TEAM_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **PR:** #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
-          echo "- **File:** hackathon-report-$TEAM_NAME.html" >> $GITHUB_STEP_SUMMARY
+          echo "- **Root File:** hackathon-report-$TEAM_NAME.html" >> $GITHUB_STEP_SUMMARY
+          echo "- **Persistent File:** $persistent_path" >> $GITHUB_STEP_SUMMARY
           echo "- **Size:** $file_size bytes" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The HTML report provides a beautiful, interactive dashboard with:" >> $GITHUB_STEP_SUMMARY
