@@ -263,42 +263,45 @@ jobs:
             CURRENT_BRANCH=$(git branch --show-current)
             git push origin $CURRENT_BRANCH
             echo "HTML report committed and pushed successfully!"
-            echo "html_committed=true" >> $GITHUB_OUTPUT
+                        echo "html_committed=true" >> $GITHUB_OUTPUT
           else
             echo "No HTML report changes to commit"
             echo "html_committed=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Trigger GitHub Pages Deployment
+      - name: Generate and Commit Reports Index
+        id: generate_index
         if: steps.commit_html_report.outputs.html_committed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            console.log('🚀 Triggering GitHub Pages deployment...');
+        run: |
+          echo "🔄 Generating reports index page..."
 
-            try {
-              const result = await github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'deploy-reports.yml',
-                ref: context.ref
-              });
+          # Generate the index page
+          node .github/scripts/generate-index.js
+
+          # Check if index was generated and commit it
+          if [[ -f "reports/index.html" ]]; then
+            echo "✅ Index page generated successfully"
+            
+            # Check if there are changes to commit
+            if [[ -n "$(git status --porcelain reports/index.html)" ]]; then
+              echo "📤 Committing updated index page..."
+              git add reports/index.html
+              git commit -m "📊 Update reports dashboard index page"
               
-              console.log('✅ Successfully triggered GitHub Pages deployment');
-              core.summary.addRaw(`
-              ## 🚀 GitHub Pages Deployment Triggered
+              CURRENT_BRANCH=$(git branch --show-current)
+              git push origin $CURRENT_BRANCH
+              echo "✅ Reports index committed and pushed successfully!"
               
-              The reports dashboard will be updated automatically.
-              
-              - **Workflow:** deploy-reports.yml
-              - **Branch:** ${context.ref}
-              - **Team:** ${{ steps.pr_info.outputs.team_name }}
-              - **PR:** #${{ steps.pr_info.outputs.pr_number }}
-              `);
-                } catch (error) {
-              console.log('⚠️ Could not trigger GitHub Pages deployment:', error.message);
-              console.log('This may be normal if the workflow file is not in the main branch yet.');
-            }
+              # Set repository URL for users to access
+              REPORTS_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${CURRENT_BRANCH}/reports/index.html"
+              echo "📋 Reports dashboard available at: ${REPORTS_URL}"
+              echo "reports_index_url=${REPORTS_URL}" >> $GITHUB_OUTPUT
+            else
+              echo "📋 No changes to index page, already up to date"
+            fi
+          else
+            echo "❌ Failed to generate index page"
+          fi
 
       - name: Post Results Comment
         if: github.event_name == 'pull_request'
@@ -324,6 +327,7 @@ jobs:
           reports_committed: ${{ steps.commit_results.outputs.reports_committed }}
           report_url: ${{ steps.commit_results.outputs.report_url }}
           html_report_file: ${{ steps.generate_html_report.outputs.html_file || '' }}
+          reports_index_url: ${{ steps.generate_index.outputs.reports_index_url || '' }}
           code_smells: ${{ steps.sonar_analysis.outputs.code_smells || '0' }}
           bugs: ${{ steps.sonar_analysis.outputs.bugs || '0' }}
           vulnerabilities: ${{ steps.sonar_analysis.outputs.vulnerabilities || '0' }}
